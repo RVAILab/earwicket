@@ -1,5 +1,6 @@
 import SpotifyWebApi from 'spotify-web-api-node';
 import db from '../db/client';
+import { TABLES } from '../db/tables';
 import { SpotifyCredentials, SpotifyPlaylist, SpotifyTrack } from '@/types';
 
 export class SpotifyClient {
@@ -47,11 +48,11 @@ export class SpotifyClient {
     userId: string
   ): Promise<void> {
     // Delete existing credentials (singleton table)
-    await db.execute('DELETE FROM spotify_credentials');
+    await db.execute(`DELETE FROM ${TABLES.SPOTIFY_CREDENTIALS}`);
 
     // Insert new credentials
     await db.execute(
-      `INSERT INTO spotify_credentials (access_token, refresh_token, expires_at, user_id)
+      `INSERT INTO ${TABLES.SPOTIFY_CREDENTIALS} (access_token, refresh_token, expires_at, user_id)
        VALUES ($1, $2, $3, $4)`,
       [accessToken, refreshToken, expiresAt, userId]
     );
@@ -59,7 +60,7 @@ export class SpotifyClient {
 
   async loadCredentials(): Promise<boolean> {
     const creds = await db.queryOne<SpotifyCredentials>(
-      'SELECT * FROM spotify_credentials LIMIT 1'
+      `SELECT * FROM ${TABLES.SPOTIFY_CREDENTIALS} LIMIT 1`
     );
 
     if (!creds) {
@@ -98,7 +99,7 @@ export class SpotifyClient {
     // Update database
     const refreshToken = data.body.refresh_token || this.spotify.getRefreshToken();
     await db.execute(
-      `UPDATE spotify_credentials
+      `UPDATE ${TABLES.SPOTIFY_CREDENTIALS}
        SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = CURRENT_TIMESTAMP`,
       [data.body.access_token, refreshToken, this.expiresAt]
     );

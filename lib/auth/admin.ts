@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from '../db/client';
+import { TABLES } from '../db/tables';
 import { AdminUser } from '@/types';
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'default-secret-change-me';
@@ -41,7 +42,7 @@ export async function createAdminUser(
   const passwordHash = await hashPassword(password);
 
   const result = await db.queryOne<AdminUser>(
-    `INSERT INTO admin_users (username, password_hash)
+    `INSERT INTO ${TABLES.ADMIN_USERS} (username, password_hash)
      VALUES ($1, $2)
      RETURNING *`,
     [username, passwordHash]
@@ -59,7 +60,7 @@ export async function authenticateAdmin(
   password: string
 ): Promise<{ user: AdminUser; token: string } | null> {
   const user = await db.queryOne<AdminUser>(
-    'SELECT * FROM admin_users WHERE username = $1',
+    `SELECT * FROM ${TABLES.ADMIN_USERS} WHERE username = $1`,
     [username]
   );
 
@@ -89,7 +90,7 @@ export async function getAdminFromToken(token: string): Promise<AdminUser | null
   }
 
   const user = await db.queryOne<AdminUser>(
-    'SELECT * FROM admin_users WHERE id = $1',
+    `SELECT * FROM ${TABLES.ADMIN_USERS} WHERE id = $1`,
     [payload.userId]
   );
 

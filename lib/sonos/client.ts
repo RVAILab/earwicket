@@ -1,4 +1,5 @@
 import db from '../db/client';
+import { TABLES } from '../db/tables';
 import { SonosCredentials, SonosGroup, SonosPlaybackStatus } from '@/types';
 
 const SONOS_API_BASE = 'https://api.ws.sonos.com/control/api/v1';
@@ -86,11 +87,11 @@ export class SonosClient {
 
   private async saveCredentials(): Promise<void> {
     // Delete existing credentials (singleton table)
-    await db.execute('DELETE FROM sonos_credentials');
+    await db.execute(`DELETE FROM ${TABLES.SONOS_CREDENTIALS}`);
 
     // Insert new credentials
     await db.execute(
-      `INSERT INTO sonos_credentials (access_token, refresh_token, expires_at, household_id)
+      `INSERT INTO ${TABLES.SONOS_CREDENTIALS} (access_token, refresh_token, expires_at, household_id)
        VALUES ($1, $2, $3, $4)`,
       [this.accessToken, this.refreshToken, this.expiresAt, this.householdId]
     );
@@ -98,7 +99,7 @@ export class SonosClient {
 
   async loadCredentials(): Promise<boolean> {
     const creds = await db.queryOne<SonosCredentials>(
-      'SELECT * FROM sonos_credentials LIMIT 1'
+      `SELECT * FROM ${TABLES.SONOS_CREDENTIALS} LIMIT 1`
     );
 
     if (!creds) {
@@ -152,7 +153,7 @@ export class SonosClient {
 
     // Update database
     await db.execute(
-      `UPDATE sonos_credentials
+      `UPDATE ${TABLES.SONOS_CREDENTIALS}
        SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = CURRENT_TIMESTAMP`,
       [this.accessToken, this.refreshToken, this.expiresAt]
     );

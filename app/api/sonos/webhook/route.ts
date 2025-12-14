@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import db from '@/lib/db/client';
+import { TABLES } from '@/lib/db/tables';
 
 /**
  * Sonos webhook endpoint for real-time playback events
@@ -107,7 +108,7 @@ function verifySignature(params: {
 async function handlePlaybackStatusEvent(groupId: string, body: any) {
   try {
     const zone = await db.queryOne<{ id: string }>(
-      'SELECT id FROM zones WHERE sonos_group_id = $1',
+      `SELECT id FROM ${TABLES.ZONES} WHERE sonos_group_id = $1`,
       [groupId]
     );
 
@@ -118,7 +119,7 @@ async function handlePlaybackStatusEvent(groupId: string, body: any) {
 
     // Update playback_state timestamp
     await db.execute(
-      'UPDATE playback_state SET last_updated = CURRENT_TIMESTAMP WHERE zone_id = $1',
+      `UPDATE ${TABLES.PLAYBACK_STATE} SET last_updated = CURRENT_TIMESTAMP WHERE zone_id = $1`,
       [zone.id]
     );
 
@@ -134,7 +135,7 @@ async function handlePlaybackStatusEvent(groupId: string, body: any) {
 async function handlePlaybackEvent(groupId: string, body: any) {
   try {
     const zone = await db.queryOne<{ id: string }>(
-      'SELECT id FROM zones WHERE sonos_group_id = $1',
+      `SELECT id FROM ${TABLES.ZONES} WHERE sonos_group_id = $1`,
       [groupId]
     );
 

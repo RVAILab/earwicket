@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminUser } from '@/lib/auth/admin';
 import db from '@/lib/db/client';
+import { TABLES } from '@/lib/db/tables';
 
 // This endpoint is for initial setup only
 // In production, you should disable this or add additional protection
 export async function POST(request: NextRequest) {
   try {
     // Check if any admin users already exist
-    const existingUsers = await db.query('SELECT id FROM admin_users LIMIT 1');
+    const existingUsers = await db.query(`SELECT id FROM ${TABLES.ADMIN_USERS} LIMIT 1`);
 
     if (existingUsers.length > 0) {
       return NextResponse.json(
