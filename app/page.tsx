@@ -180,21 +180,6 @@ export default function Home() {
 
         {/* Main Actions */}
         <div className="grid md:grid-cols-2 gap-6 mb-12 max-w-3xl mx-auto">
-        {/* Logo/Header */}
-        <div className="mb-12 animate-fade-in">
-          <div className="inline-block mb-4">
-            <div className="text-6xl mb-2">🐰🎵</div>
-          </div>
-          <h1 className="text-6xl font-black mb-3 bg-gradient-to-r from-purple-600 via-blue-600 to-pink-600 bg-clip-text text-transparent">
-            Earwicket
-          </h1>
-          <p className="text-xl text-gray-600 font-medium">
-            Your magical Sonos control companion
-          </p>
-        </div>
-
-        {/* Main Actions */}
-        <div className="grid md:grid-cols-2 gap-6 mb-16">
           <a
             href="/admin"
             className="group relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 text-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300"
