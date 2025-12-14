@@ -3,16 +3,46 @@
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 
+interface AuthStatus {
+  sonos: { connected: boolean; expired: boolean };
+  spotify: { connected: boolean; expired: boolean };
+}
+
 function AdminContent() {
   const searchParams = useSearchParams();
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch actual auth status from database
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch('/api/status');
+        const result = await response.json();
+        if (result.success) {
+          setAuthStatus(result.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch status:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStatus();
+  }, []);
 
   useEffect(() => {
     // Check for OAuth success/error messages
     if (searchParams.get('sonos_auth') === 'success') {
       setMessage({ type: 'success', text: 'Sonos authorized successfully!' });
+      // Refresh status after successful auth
+      setTimeout(() => window.location.href = '/admin', 2000);
     } else if (searchParams.get('spotify_auth') === 'success') {
       setMessage({ type: 'success', text: 'Spotify authorized successfully!' });
+      // Refresh status after successful auth
+      setTimeout(() => window.location.href = '/admin', 2000);
     } else if (searchParams.get('error')) {
       const error = searchParams.get('error');
       const details = searchParams.get('details');
@@ -57,8 +87,14 @@ function AdminContent() {
               <div>
                 <p className="text-sm text-gray-600">Status</p>
                 <p className="font-medium">
-                  {searchParams.get('sonos_auth') === 'success' ? (
-                    <span className="text-green-600">✓ Connected</span>
+                  {loading ? (
+                    <span className="text-gray-400">Checking...</span>
+                  ) : authStatus?.sonos.connected ? (
+                    authStatus.sonos.expired ? (
+                      <span className="text-yellow-600">⚠️ Token expired</span>
+                    ) : (
+                      <span className="text-green-600">✓ Connected</span>
+                    )
                   ) : (
                     <span className="text-gray-400">Not connected</span>
                   )}
@@ -83,8 +119,14 @@ function AdminContent() {
               <div>
                 <p className="text-sm text-gray-600">Status</p>
                 <p className="font-medium">
-                  {searchParams.get('spotify_auth') === 'success' ? (
-                    <span className="text-green-600">✓ Connected</span>
+                  {loading ? (
+                    <span className="text-gray-400">Checking...</span>
+                  ) : authStatus?.spotify.connected ? (
+                    authStatus.spotify.expired ? (
+                      <span className="text-yellow-600">⚠️ Token expired</span>
+                    ) : (
+                      <span className="text-green-600">✓ Connected</span>
+                    )
                   ) : (
                     <span className="text-gray-400">Not connected</span>
                   )}
