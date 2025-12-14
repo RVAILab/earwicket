@@ -113,10 +113,48 @@ export default function ZonesPage() {
 
       if (response.ok) {
         setShowZoneForm(false);
+        setSonosGroups([]);
+        setSelectedHouseholdForZone('');
         fetchData();
       }
     } catch (error) {
       console.error('Error creating zone:', error);
+    }
+  };
+
+  const deleteEnvironment = async (id: string) => {
+    if (!confirm('Delete this environment? All associated zones and schedules will be deleted.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/environments/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Error deleting environment:', error);
+    }
+  };
+
+  const deleteZone = async (id: string) => {
+    if (!confirm('Delete this zone? All associated schedules will be deleted.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/zones/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Error deleting zone:', error);
     }
   };
 
@@ -208,14 +246,23 @@ export default function ZonesPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             {environments.map((env) => (
-              <div key={env.id} className="bg-white p-4 rounded-xl shadow">
-                <h3 className="font-bold text-lg">{env.name}</h3>
-                <p className="text-sm text-gray-600">🌍 {env.timezone}</p>
-                {env.household_id && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Sonos: {env.household_id.substring(0, 30)}...
-                  </p>
-                )}
+              <div key={env.id} className="bg-white p-4 rounded-xl shadow flex justify-between items-start">
+                <div>
+                  <h3 className="font-bold text-lg">{env.name}</h3>
+                  <p className="text-sm text-gray-600">🌍 {env.timezone}</p>
+                  {env.household_id && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Sonos: {env.household_id.substring(0, 30)}...
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => deleteEnvironment(env.id)}
+                  className="text-red-600 hover:text-red-800 text-sm"
+                  title="Delete environment"
+                >
+                  🗑️
+                </button>
               </div>
             ))}
             {environments.length === 0 && (
@@ -314,12 +361,26 @@ export default function ZonesPage() {
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {zones.map((zone) => (
-              <div key={zone.id} className="bg-white p-4 rounded-xl shadow">
-                <h3 className="font-bold text-lg">{zone.name}</h3>
-                <p className="text-sm text-gray-600">{zone.environment_name}</p>
-                <p className="text-xs text-gray-400 mt-2">Group: {zone.sonos_group_id.substring(0, 20)}...</p>
+              <div key={zone.id} className="bg-white p-4 rounded-xl shadow flex justify-between items-start">
+                <div>
+                  <h3 className="font-bold text-lg">{zone.name}</h3>
+                  <p className="text-sm text-gray-600">{zone.environment_name}</p>
+                  <p className="text-xs text-gray-400 mt-2">Group: {zone.sonos_group_id.substring(0, 20)}...</p>
+                </div>
+                <button
+                  onClick={() => deleteZone(zone.id)}
+                  className="text-red-600 hover:text-red-800 text-sm"
+                  title="Delete zone"
+                >
+                  🗑️
+                </button>
               </div>
             ))}
+            {zones.length === 0 && (
+              <div className="col-span-3 text-center py-8 text-gray-500">
+                <p>No zones yet. Create zones from your Sonos groups!</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
