@@ -146,23 +146,23 @@ function AdminContent() {
         <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-100">
           <h2 className="text-xl font-bold mb-4">🚀 Quick Actions</h2>
           <div className="grid gap-4 md:grid-cols-3">
+            <a
+              href="/admin/zones"
+              className="px-4 py-3 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl hover:shadow-lg transition-all duration-300 font-semibold text-center transform hover:-translate-y-0.5"
+            >
+              🏠 Manage Zones
+            </a>
+            <a
+              href="/admin/schedules"
+              className="px-4 py-3 bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl hover:shadow-lg transition-all duration-300 font-semibold text-center transform hover:-translate-y-0.5"
+            >
+              📅 Manage Schedules
+            </a>
             <button
               disabled
               className="px-4 py-3 bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed font-medium"
             >
-              🏠 Manage Zones (Coming Soon)
-            </button>
-            <button
-              disabled
-              className="px-4 py-3 bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed font-medium"
-            >
-              📅 Create Schedule (Coming Soon)
-            </button>
-            <button
-              disabled
-              className="px-4 py-3 bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed font-medium"
-            >
-              🎵 View Requests (Coming Soon)
+              🎵 View Requests (Phase 3)
             </button>
           </div>
         </div>
