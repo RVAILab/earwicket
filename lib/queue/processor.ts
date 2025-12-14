@@ -86,6 +86,17 @@ export async function processZoneQueue(zoneId: string, sonosGroupId: string): Pr
       );
     }
 
+    // Pause current playback first (to avoid conflicts)
+    try {
+      await sonosClient.pause(sonosGroupId);
+      console.log(`[QUEUE] Zone ${zoneId}: Paused current playback`);
+    } catch (error) {
+      console.log(`[QUEUE] Zone ${zoneId}: Could not pause (might already be paused)`);
+    }
+
+    // Wait a moment for pause to register
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     // Load and play the track
     await sonosClient.loadTrack(sonosGroupId, nextRequest.track_uri, true);
 
