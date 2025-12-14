@@ -24,11 +24,14 @@ export default function AdminPage() {
   }, [searchParams]);
 
   return (
-    <main className="min-h-screen p-8 bg-gray-50">
+    <main className="min-h-screen p-8 bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
-          <p className="text-gray-600">Earwicket Control Panel</p>
+        <div className="mb-8 text-center">
+          <div className="text-4xl mb-2">⚙️</div>
+          <h1 className="text-4xl font-black bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-2">
+            Admin Dashboard
+          </h1>
+          <p className="text-gray-600 font-medium">Earwicket Control Panel</p>
         </div>
 
         {message && (
@@ -45,8 +48,11 @@ export default function AdminPage() {
 
         <div className="grid gap-6 md:grid-cols-2 mb-8">
           {/* Sonos Status */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Sonos Integration</h2>
+          <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-100">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-2xl">🔊</span>
+              <h2 className="text-xl font-bold">Sonos Integration</h2>
+            </div>
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-gray-600">Status</p>
@@ -60,16 +66,19 @@ export default function AdminPage() {
               </div>
               <a
                 href="/api/sonos/auth"
-                className="inline-block px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 transition text-sm"
+                className="inline-block px-4 py-2 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all duration-300 text-sm font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
               >
-                Authorize Sonos
+                Re-authorize Sonos
               </a>
             </div>
           </div>
 
           {/* Spotify Status */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Spotify Integration</h2>
+          <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-100">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-2xl">🎵</span>
+              <h2 className="text-xl font-bold">Spotify Integration</h2>
+            </div>
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-gray-600">Status</p>
@@ -83,7 +92,7 @@ export default function AdminPage() {
               </div>
               <a
                 href="/api/spotify/auth"
-                className="inline-block px-4 py-2 bg-green-800 text-white rounded hover:bg-green-900 transition text-sm"
+                className="inline-block px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-all duration-300 text-sm font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
               >
                 Authorize Spotify
               </a>
@@ -92,26 +101,26 @@ export default function AdminPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
+        <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-100">
+          <h2 className="text-xl font-bold mb-4">🚀 Quick Actions</h2>
           <div className="grid gap-4 md:grid-cols-3">
             <button
               disabled
-              className="px-4 py-3 bg-gray-100 text-gray-400 rounded cursor-not-allowed"
+              className="px-4 py-3 bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed font-medium"
             >
-              Manage Zones (Coming Soon)
+              🏠 Manage Zones (Coming Soon)
             </button>
             <button
               disabled
-              className="px-4 py-3 bg-gray-100 text-gray-400 rounded cursor-not-allowed"
+              className="px-4 py-3 bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed font-medium"
             >
-              Create Schedule (Coming Soon)
+              📅 Create Schedule (Coming Soon)
             </button>
             <button
               disabled
-              className="px-4 py-3 bg-gray-100 text-gray-400 rounded cursor-not-allowed"
+              className="px-4 py-3 bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed font-medium"
             >
-              View Requests (Coming Soon)
+              🎵 View Requests (Coming Soon)
             </button>
           </div>
         </div>
