@@ -23,24 +23,24 @@ export async function GET() {
   }
 }
 
-// POST create new environment
+// POST create new environment (linked to a Sonos household)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, timezone } = body;
+    const { name, timezone, household_id } = body;
 
-    if (!name || !timezone) {
+    if (!name || !timezone || !household_id) {
       return NextResponse.json(
-        { success: false, error: 'Name and timezone required' },
+        { success: false, error: 'Name, timezone, and household_id required' },
         { status: 400 }
       );
     }
 
     const environment = await db.queryOne<Environment>(
-      `INSERT INTO ${TABLES.ENVIRONMENTS} (name, timezone)
-       VALUES ($1, $2)
+      `INSERT INTO ${TABLES.ENVIRONMENTS} (name, timezone, household_id)
+       VALUES ($1, $2, $3)
        RETURNING *`,
-      [name, timezone]
+      [name, timezone, household_id]
     );
 
     return NextResponse.json({
