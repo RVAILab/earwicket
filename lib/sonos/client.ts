@@ -226,7 +226,7 @@ export class SonosClient {
     const playlistId = playlistUri.split(':')[2];
 
     const response = await fetch(
-      `${SONOS_API_BASE}/groups/${groupId}/playback/playlist/spotify:playlist:${playlistId}`,
+      `${SONOS_API_BASE}/groups/${groupId}/playback/content`,
       {
         method: 'POST',
         headers: {
@@ -234,10 +234,15 @@ export class SonosClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          playOnCompletion,
+          type: 'PLAYLIST',
+          id: {
+            objectId: `spotify:playlist:${playlistId}`,
+            serviceId: '3', // Spotify service ID
+          },
+          playbackAction: playOnCompletion ? 'PLAY' : 'PAUSE',
           playModes: {
-            shuffle: false,
             repeat: false,
+            shuffle: false,
           },
         }),
       }
@@ -256,7 +261,7 @@ export class SonosClient {
     const trackId = trackUri.split(':')[2];
 
     const response = await fetch(
-      `${SONOS_API_BASE}/groups/${groupId}/playback/track/spotify:track:${trackId}`,
+      `${SONOS_API_BASE}/groups/${groupId}/playback/content`,
       {
         method: 'POST',
         headers: {
@@ -264,7 +269,12 @@ export class SonosClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          playOnCompletion,
+          type: 'TRACK',
+          id: {
+            objectId: `spotify:track:${trackId}`,
+            serviceId: '3', // Spotify service ID
+          },
+          playbackAction: playOnCompletion ? 'PLAY' : 'PAUSE',
         }),
       }
     );
