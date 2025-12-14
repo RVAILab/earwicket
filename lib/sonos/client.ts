@@ -32,7 +32,8 @@ export class SonosClient {
   }
 
   async exchangeCodeForToken(code: string): Promise<void> {
-    const clientId = process.env.SONOS_CLIENT_ID!;
+    // Token exchange uses API Key (not Client ID) for Basic Auth
+    const apiKey = process.env.SONOS_API_KEY!;
     const clientSecret = process.env.SONOS_CLIENT_SECRET!;
     const redirectUri = process.env.SONOS_REDIRECT_URI!;
 
@@ -40,7 +41,7 @@ export class SonosClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+        Authorization: `Basic ${Buffer.from(`${apiKey}:${clientSecret}`).toString('base64')}`,
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
@@ -127,14 +128,15 @@ export class SonosClient {
   }
 
   private async refreshAccessToken(): Promise<void> {
-    const clientId = process.env.SONOS_CLIENT_ID!;
+    // Token refresh also uses API Key (not Client ID) for Basic Auth
+    const apiKey = process.env.SONOS_API_KEY!;
     const clientSecret = process.env.SONOS_CLIENT_SECRET!;
 
     const response = await fetch(`${SONOS_AUTH_BASE}/login/v3/oauth/access`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+        Authorization: `Basic ${Buffer.from(`${apiKey}:${clientSecret}`).toString('base64')}`,
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
