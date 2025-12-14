@@ -15,12 +15,13 @@ export class SonosClient {
 
   // OAuth2 Methods
   getAuthorizationUrl(): string {
-    const clientId = process.env.SONOS_CLIENT_ID!;
+    // Note: Sonos uses the "Key" (SONOS_API_KEY) for authorization URL, not Client ID
+    const apiKey = process.env.SONOS_API_KEY!;
     const redirectUri = process.env.SONOS_REDIRECT_URI!;
     const scope = 'playback-control-all';
 
     const params = new URLSearchParams({
-      client_id: clientId,
+      client_id: apiKey, // This is actually the "Key" from Sonos portal
       response_type: 'code',
       redirect_uri: redirectUri,
       scope,
