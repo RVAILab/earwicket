@@ -6,11 +6,11 @@ import { Schedule } from '@/types';
 // PATCH update schedule
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const body = await request.json();
-    const { id } = params;
+    const { id } = await params;
 
     // Build dynamic update query
     const updates: string[] = [];
@@ -76,10 +76,10 @@ export async function PATCH(
 // DELETE schedule
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     await db.execute(
       `DELETE FROM ${TABLES.SCHEDULES} WHERE id = $1`,
