@@ -81,7 +81,14 @@ export class SonosClient {
 
     const data = await response.json();
     if (data.households && data.households.length > 0) {
+      // Store the first household by default
+      // User can change this via /api/sonos/households if they have multiple
       this.householdId = data.households[0].id;
+      console.log(`[SONOS] Found ${data.households.length} household(s), using: ${this.householdId}`);
+
+      if (data.households.length > 1) {
+        console.warn('[SONOS] Multiple households detected! You can switch via /api/sonos/households');
+      }
     } else {
       throw new Error('No households found');
     }
