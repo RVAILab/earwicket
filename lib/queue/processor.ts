@@ -9,11 +9,18 @@ import { PlaybackState, SongRequest, SonosPlaybackStatus } from '@/types';
  * Called by cron job every minute
  */
 export async function processZoneQueue(zoneId: string, sonosGroupId: string): Promise<void> {
+  console.log(`[QUEUE] Processing zone ${zoneId} (group: ${sonosGroupId})`);
+
   // Get current playback state
   const state = await db.queryOne<PlaybackState>(
     `SELECT * FROM ${TABLES.PLAYBACK_STATE} WHERE zone_id = $1`,
     [zoneId]
   );
+
+  console.log(`[QUEUE] Zone ${zoneId} state:`, {
+    activity: state?.current_activity,
+    hasInterruptedSchedule: !!state?.interrupted_schedule_id,
+  });
 
   // Get pending requests for this zone
   const pendingRequests = await db.query<SongRequest>(
@@ -24,6 +31,8 @@ export async function processZoneQueue(zoneId: string, sonosGroupId: string): Pr
     [zoneId]
   );
 
+  console.log(`[QUEUE] Zone ${zoneId}: ${pendingRequests.length} pending requests`);
+
   // Get currently playing request
   const playingRequest = await db.queryOne<SongRequest>(
     `SELECT * FROM ${TABLES.SONG_REQUESTS}
@@ -32,9 +41,16 @@ export async function processZoneQueue(zoneId: string, sonosGroupId: string): Pr
     [zoneId]
   );
 
+  console.log(`[QUEUE] Zone ${zoneId}: ${playingRequest ? 'Has' : 'No'} playing request`);
+
   // Check actual Sonos playback status
   const playbackStatus = await sonosClient.getPlaybackStatus(sonosGroupId);
   const isPlaying = playbackStatus.playbackState === 'PLAYBACK_STATE_PLAYING';
+
+  console.log(`[QUEUE] Zone ${zoneId} Sonos status:`, {
+    state: playbackStatus.playbackState,
+    isPlaying,
+  });
 
   // Case 1: We have a pending request and no song is currently playing
   if (pendingRequests.length > 0 && !playingRequest) {

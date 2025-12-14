@@ -33,20 +33,29 @@ export async function GET(request: NextRequest) {
       current_activity: string;
       interrupted_schedule_id: string | null;
     }>(
-      `SELECT current_activity, interrupted_schedule_id FROM ${TABLES.PLAYBACK_STATE} WHERE zone_id = $1`,
+      `SELECT ps.current_activity, ps.interrupted_schedule_id
+       FROM ${TABLES.PLAYBACK_STATE} ps
+       WHERE ps.zone_id = $1`,
       [zoneId]
     );
 
     // Get current schedule if playing
     let currentSchedule = null;
-    if (state?.current_activity === 'scheduled' || state?.interrupted_schedule_id) {
-      const scheduleId = state.interrupted_schedule_id || null;
+    if (state?.current_activity === 'scheduled') {
+      // When scheduled, the interrupted_schedule_id holds the current schedule
+      const scheduleId = state.interrupted_schedule_id;
       if (scheduleId) {
         currentSchedule = await db.queryOne(
           `SELECT name, playlist_name FROM ${TABLES.SCHEDULES} WHERE id = $1`,
           [scheduleId]
         );
       }
+    } else if (state?.interrupted_schedule_id) {
+      // When interrupted, show what will resume
+      currentSchedule = await db.queryOne(
+        `SELECT name, playlist_name FROM ${TABLES.SCHEDULES} WHERE id = $1`,
+        [state.interrupted_schedule_id]
+      );
     }
 
     // Get Sonos playback status
