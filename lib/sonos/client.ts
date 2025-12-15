@@ -269,11 +269,9 @@ export class SonosClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          id: {
-            objectId: `spotify:track:${trackId}`,
-            serviceId: '12', // Spotify service ID
-          },
-          playbackAction: playOnCompletion ? 'PLAY' : 'PAUSE',
+          objectId: `spotify:track:${trackId}`,
+          serviceId: '12',
+          playOnCompletion: playOnCompletion,
         }),
       }
     );
