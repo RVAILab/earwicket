@@ -158,12 +158,12 @@ function AdminContent() {
             >
               📅 Manage Schedules
             </a>
-            <button
-              disabled
-              className="px-4 py-3 bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed font-medium"
+            <a
+              href="/admin/requests"
+              className="px-4 py-3 bg-gradient-to-br from-pink-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all duration-300 font-semibold text-center transform hover:-translate-y-0.5"
             >
-              🎵 View Requests (Phase 3)
-            </button>
+              🎵 Manage Requests
+            </a>
           </div>
         </div>
 
