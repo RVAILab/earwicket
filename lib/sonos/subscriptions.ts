@@ -1,5 +1,5 @@
-import db from './db/client';
-import { TABLES } from './db/tables';
+import db from '../db/client';
+import { TABLES } from '../db/tables';
 
 const SONOS_API_BASE = 'https://api.ws.sonos.com/control/api/v1';
 
