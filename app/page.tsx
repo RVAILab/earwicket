@@ -50,8 +50,8 @@ export default function Home() {
     };
 
     fetchNowPlaying();
-    // Refresh every 10 seconds
-    const interval = setInterval(fetchNowPlaying, 10000);
+    // Refresh every 3 seconds for more real-time updates
+    const interval = setInterval(fetchNowPlaying, 3000);
     return () => clearInterval(interval);
   }, [selectedZone]);
 
