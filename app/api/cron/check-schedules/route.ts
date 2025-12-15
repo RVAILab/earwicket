@@ -36,20 +36,29 @@ export async function POST(request: NextRequest) {
       if (schedule) {
         console.log(`[CRON] Zone "${zoneName}": Schedule "${schedule.name}" should be active`);
 
-        // Don't interrupt visitor requests
-        if (state?.current_activity === 'visitor_request') {
-          console.log(`[CRON] Zone "${zoneName}": Skipping - visitor request in progress`);
+        // Check if there are ANY visitor requests (pending or playing)
+        const visitorRequests = await db.queryOne<{ count: string }>(
+          `SELECT COUNT(*) as count FROM ${TABLES.SONG_REQUESTS}
+           WHERE zone_id = $1 AND status IN ('pending', 'playing')`,
+          [zoneId]
+        );
+
+        if (visitorRequests && parseInt(visitorRequests.count) > 0) {
+          console.log(`[CRON] Zone "${zoneName}": Has visitor requests, waiting for queue to finish`);
           continue;
         }
 
-        // Check if we need to start this schedule
-        // Only start if: no state OR currently idle OR different schedule
-        const needsToStart =
+        // Check actual Sonos playback state - don't interrupt if something is playing
+        const playbackStatus = await sonosClient.getPlaybackStatus(sonosGroupId);
+        const isCurrentlyPlaying = playbackStatus.playbackState === 'PLAYBACK_STATE_PLAYING';
+
+        // Only start schedule if zone is truly idle OR it's a different schedule
+        const shouldStart =
           !state ||
-          (state.current_activity === 'idle') ||
+          (state.current_activity === 'idle' && !isCurrentlyPlaying) ||
           (state.current_activity === 'scheduled' && state.interrupted_schedule_id !== schedule.id);
 
-        if (needsToStart) {
+        if (shouldStart) {
           console.log(`[CRON] Zone "${zoneName}": Starting schedule "${schedule.name}"`);
 
           try {
