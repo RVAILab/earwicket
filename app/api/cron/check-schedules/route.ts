@@ -83,14 +83,26 @@ export async function POST(request: NextRequest) {
         console.log(`[CRON] Zone "${zoneName}": No active schedule`);
 
         // If currently playing scheduled content, mark as idle
+        // BUT don't touch zones with visitor requests!
         if (state?.current_activity === 'scheduled') {
-          await db.execute(
-            `UPDATE ${TABLES.PLAYBACK_STATE}
-             SET current_activity = 'idle', last_updated = CURRENT_TIMESTAMP
-             WHERE zone_id = $1`,
+          // Check if there are any pending or playing visitor requests
+          const hasVisitorRequests = await db.queryOne<{ count: string }>(
+            `SELECT COUNT(*) as count FROM ${TABLES.SONG_REQUESTS}
+             WHERE zone_id = $1 AND status IN ('pending', 'playing')`,
             [zoneId]
           );
-          console.log(`[CRON] Zone "${zoneName}": Marked as idle (schedule ended)`);
+
+          if (hasVisitorRequests && parseInt(hasVisitorRequests.count) > 0) {
+            console.log(`[CRON] Zone "${zoneName}": Has visitor requests, not changing state`);
+          } else {
+            await db.execute(
+              `UPDATE ${TABLES.PLAYBACK_STATE}
+               SET current_activity = 'idle', last_updated = CURRENT_TIMESTAMP
+               WHERE zone_id = $1`,
+              [zoneId]
+            );
+            console.log(`[CRON] Zone "${zoneName}": Marked as idle (schedule ended)`);
+          }
         }
       }
     }
