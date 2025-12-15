@@ -180,14 +180,26 @@ export default function Home() {
                     )}
                     <div className="flex-1">
                       <p className="text-2xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-1">
-                        {nowPlaying.metadata.currentItem.track?.name || 'Unknown Track'}
+                        {nowPlaying.metadata.currentItem.track?.name ||
+                         nowPlaying.metadata.container?.name ||
+                         'Loading...'}
                       </p>
                       <p className="text-xl text-gray-700 mb-1">
-                        {nowPlaying.metadata.currentItem.track?.artist?.name || 'Unknown Artist'}
+                        {nowPlaying.metadata.currentItem.track?.artist?.name ||
+                         'Loading artist...'}
                       </p>
                       <p className="text-sm text-gray-500 mb-2">
                         {nowPlaying.metadata.currentItem.track?.album?.name || ''}
                       </p>
+                      {/* Debug - show what we're getting */}
+                      {(!nowPlaying.metadata.currentItem.track?.name) && (
+                        <details className="text-xs text-gray-400 mt-2">
+                          <summary className="cursor-pointer hover:text-gray-600">Debug metadata</summary>
+                          <pre className="text-xs overflow-auto max-h-32 mt-1 p-2 bg-gray-100 rounded">
+                            {JSON.stringify(nowPlaying.metadata?.currentItem, null, 2)}
+                          </pre>
+                        </details>
+                      )}
 
                       {nowPlaying.metadata.container && (
                         <div className="inline-block px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold">
