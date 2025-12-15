@@ -109,6 +109,24 @@ export default function SchedulesPage() {
     }
   };
 
+  const deleteSchedule = async (id: string) => {
+    if (!confirm('Delete this schedule? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/schedules/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Error deleting schedule:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -243,7 +261,7 @@ export default function SchedulesPage() {
           {schedules.map((schedule) => (
             <div
               key={schedule.id}
-              className="bg-white p-6 rounded-xl shadow-lg flex justify-between items-center"
+              className="bg-white p-6 rounded-xl shadow-lg flex justify-between items-start"
             >
               <div className="flex-1">
                 <h3 className="font-bold text-lg">{schedule.name}</h3>
@@ -265,7 +283,7 @@ export default function SchedulesPage() {
                   {schedule.end_time && ` - ${schedule.end_time.substring(0, 5)}`}
                 </p>
               </div>
-              <div>
+              <div className="flex flex-col gap-2">
                 <button
                   onClick={() => toggleSchedule(schedule.id, schedule.enabled)}
                   className={`px-4 py-2 rounded-lg font-semibold transition ${
@@ -275,6 +293,12 @@ export default function SchedulesPage() {
                   }`}
                 >
                   {schedule.enabled ? 'Enabled' : 'Disabled'}
+                </button>
+                <button
+                  onClick={() => deleteSchedule(schedule.id)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-500 transition font-semibold"
+                >
+                  🗑️ Delete
                 </button>
               </div>
             </div>
