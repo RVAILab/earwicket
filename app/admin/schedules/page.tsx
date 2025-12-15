@@ -28,6 +28,7 @@ export default function SchedulesPage() {
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
 
   useEffect(() => {
@@ -96,6 +97,43 @@ export default function SchedulesPage() {
     }
   };
 
+  const updateSchedule = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingSchedule) return;
+
+    const formData = new FormData(e.currentTarget);
+    const selectedPlaylist = playlists.find((p) => p.uri === formData.get('playlist_uri'));
+
+    try {
+      const response = await fetch(`/api/schedules/${editingSchedule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.get('name'),
+          playlist_uri: formData.get('playlist_uri'),
+          playlist_name: selectedPlaylist?.name || editingSchedule.playlist_name,
+          days_of_week: selectedDays,
+          start_time: formData.get('start_time'),
+          end_time: formData.get('end_time') || null,
+        }),
+      });
+
+      if (response.ok) {
+        setEditingSchedule(null);
+        setSelectedDays([]);
+        fetchData();
+      }
+    } catch (error) {
+      console.error('Error updating schedule:', error);
+    }
+  };
+
+  const startEditing = (schedule: Schedule) => {
+    setEditingSchedule(schedule);
+    setSelectedDays(schedule.days_of_week);
+    setShowForm(false);
+  };
+
   const toggleSchedule = async (id: string, currentEnabled: boolean) => {
     try {
       await fetch(`/api/schedules/${id}`, {
@@ -153,12 +191,103 @@ export default function SchedulesPage() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">📅 Playlist Schedules</h2>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              setShowForm(!showForm);
+              setEditingSchedule(null);
+              setSelectedDays([]);
+            }}
             className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-500 transition font-semibold"
           >
             + New Schedule
           </button>
         </div>
+
+        {/* Edit Form */}
+        {editingSchedule && (
+          <form onSubmit={updateSchedule} className="bg-white p-6 rounded-xl shadow-lg mb-6 border-2 border-blue-500">
+            <h3 className="text-xl font-bold mb-4">✏️ Edit Schedule</h3>
+            <div className="grid gap-4">
+              <div>
+                <label className="block text-sm font-semibold mb-2">Schedule Name</label>
+                <input
+                  name="name"
+                  required
+                  defaultValue={editingSchedule.name}
+                  className="w-full px-4 py-2 border rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">Spotify Playlist</label>
+                <select name="playlist_uri" required defaultValue={editingSchedule.playlist_uri} className="w-full px-4 py-2 border rounded-lg">
+                  {playlists.map((playlist) => (
+                    <option key={playlist.id} value={playlist.uri}>
+                      {playlist.name} ({playlist.tracks.total} tracks)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">Days of Week</label>
+                <div className="flex gap-2 flex-wrap">
+                  {DAYS.map((day, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => toggleDay(index)}
+                      className={`px-4 py-2 rounded-lg font-semibold transition ${
+                        selectedDays.includes(index)
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Start Time</label>
+                  <input
+                    name="start_time"
+                    type="time"
+                    required
+                    defaultValue={editingSchedule.start_time}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">End Time (Optional)</label>
+                  <input
+                    name="end_time"
+                    type="time"
+                    defaultValue={editingSchedule.end_time || ''}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">
+                  Save Changes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSchedule(null);
+                    setSelectedDays([]);
+                  }}
+                  className="px-4 py-2 bg-gray-200 rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
 
         {showForm && (
           <form onSubmit={createSchedule} className="bg-white p-6 rounded-xl shadow-lg mb-6">
@@ -293,6 +422,12 @@ export default function SchedulesPage() {
                   }`}
                 >
                   {schedule.enabled ? 'Enabled' : 'Disabled'}
+                </button>
+                <button
+                  onClick={() => startEditing(schedule)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition font-semibold"
+                >
+                  ✏️ Edit
                 </button>
                 <button
                   onClick={() => deleteSchedule(schedule.id)}
