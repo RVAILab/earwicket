@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
 
     // Get visitor queue
     const queue = await db.query(
-      `SELECT track_name, artist_name, requested_by, status FROM ${TABLES.SONG_REQUESTS}
+      `SELECT id, track_name, artist_name, requested_by, status FROM ${TABLES.SONG_REQUESTS}
        WHERE zone_id = $1 AND status IN ('pending', 'playing')
        ORDER BY created_at ASC`,
       [zoneId]

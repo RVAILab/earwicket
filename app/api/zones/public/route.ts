@@ -7,7 +7,7 @@ import { Zone } from '@/types';
 export async function GET() {
   try {
     const zones = await db.query<Zone>(
-      `SELECT z.id, z.name, e.name as environment_name
+      `SELECT z.id, z.name, z.sonos_group_id, e.name as environment_name
        FROM ${TABLES.ZONES} z
        JOIN ${TABLES.ENVIRONMENTS} e ON z.environment_id = e.id
        ORDER BY e.name, z.name ASC`

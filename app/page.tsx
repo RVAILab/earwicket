@@ -14,13 +14,21 @@ interface NowPlaying {
   schedule: { name: string; playlist_name: string } | null;
   playbackStatus: any;
   metadata: any; // Sonos playback metadata
-  queue: Array<{ track_name: string; artist_name: string; requested_by: string | null; status: string }>;
+  queue: Array<{ id: string; track_name: string; artist_name: string; requested_by: string | null; status: string }>;
+}
+
+interface Zone {
+  id: string;
+  name: string;
+  environment_name: string;
+  sonos_group_id?: string;
 }
 
 export default function Home() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [selectedZone, setSelectedZone] = useState<string>('');
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false); // TODO: Implement real auth check
 
   useEffect(() => {
     // Fetch zones
@@ -88,115 +96,173 @@ export default function Home() {
           </div>
         )}
 
-        {/* Now Playing & Queue */}
+        {/* Now Playing & Full Queue */}
         {nowPlaying && (
-          <div className="grid md:grid-cols-2 gap-6 mb-12">
-            {/* Now Playing */}
-            <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-100">
-              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                <span>🎵</span>
-                <span>Now Playing</span>
-              </h2>
+          <div className="mb-12">
+            <div className="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-gray-100">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold flex items-center gap-2">
+                  <span>🎵</span>
+                  <span>Now Playing</span>
+                </h2>
+                {/* Admin Controls - Always show for now */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      const zone = zones.find(z => z.id === selectedZone);
+                      if (!zone) return;
+
+                      try {
+                        const response = await fetch('/api/playback/skip', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ group_id: zone.sonos_group_id }),
+                        });
+
+                        if (response.ok) {
+                          // Refresh immediately
+                          setTimeout(() => window.location.reload(), 500);
+                        }
+                      } catch (error) {
+                        console.error('Skip failed:', error);
+                      }
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition font-semibold shadow-lg"
+                  >
+                    ⏭️ Skip
+                  </button>
+                  {nowPlaying.playbackStatus?.playbackState === 'PLAYBACK_STATE_PLAYING' ? (
+                    <button
+                      onClick={async () => {
+                        const zone = zones.find(z => z.id === selectedZone);
+                        if (!zone) return;
+
+                        await fetch('/api/playback/pause', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ group_id: zone.sonos_group_id }),
+                        });
+                      }}
+                      className="px-4 py-2 bg-gray-600 text-white rounded-xl hover:bg-gray-500 transition font-semibold shadow-lg"
+                    >
+                      ⏸️ Pause
+                    </button>
+                  ) : (
+                    <button
+                      onClick={async () => {
+                        const zone = zones.find(z => z.id === selectedZone);
+                        if (!zone) return;
+
+                        await fetch('/api/playback/play', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ group_id: zone.sonos_group_id }),
+                        });
+                      }}
+                      className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-500 transition font-semibold shadow-lg"
+                    >
+                      ▶️ Play
+                    </button>
+                  )}
+                </div>
+              </div>
 
               {nowPlaying.metadata?.currentItem ? (
                 <div>
-                  {/* Album Art */}
-                  {nowPlaying.metadata.currentItem.track?.imageUrl && (
-                    <img
-                      src={nowPlaying.metadata.currentItem.track.imageUrl}
-                      alt="Album art"
-                      className="w-full h-48 object-cover rounded-lg mb-4 shadow-lg"
-                    />
-                  )}
+                  {/* Current Track - Big Display */}
+                  <div className="flex gap-6 mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
+                    {nowPlaying.metadata.currentItem.track?.imageUrl && (
+                      <img
+                        src={nowPlaying.metadata.currentItem.track.imageUrl}
+                        alt="Album art"
+                        className="w-32 h-32 object-cover rounded-lg shadow-lg"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <p className="text-2xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-1">
+                        {nowPlaying.metadata.currentItem.track?.name || 'Unknown Track'}
+                      </p>
+                      <p className="text-xl text-gray-700 mb-1">
+                        {nowPlaying.metadata.currentItem.track?.artist?.name || 'Unknown Artist'}
+                      </p>
+                      <p className="text-sm text-gray-500 mb-2">
+                        {nowPlaying.metadata.currentItem.track?.album?.name || ''}
+                      </p>
 
-                  {/* Track Info */}
-                  <div className="mb-3">
-                    <p className="text-xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                      {nowPlaying.metadata.currentItem.track?.name || 'Unknown Track'}
-                    </p>
-                    <p className="text-lg text-gray-700">
-                      {nowPlaying.metadata.currentItem.track?.artist?.name || 'Unknown Artist'}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {nowPlaying.metadata.currentItem.track?.album?.name || ''}
-                    </p>
+                      {nowPlaying.metadata.container && (
+                        <div className="inline-block px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold">
+                          📀 {nowPlaying.metadata.container.name}
+                        </div>
+                      )}
+
+                      {nowPlaying.playbackStatus?.playbackState === 'PLAYBACK_STATE_PLAYING' && (
+                        <div className="mt-2 flex items-center gap-2 text-green-600">
+                          <div className="w-3 h-3 bg-green-600 rounded-full animate-pulse"></div>
+                          <span className="font-semibold">Playing Now</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Container (Playlist/Album) */}
-                  {nowPlaying.metadata.container && (
-                    <div className="mb-3 p-3 bg-purple-50 rounded-lg">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">From</p>
-                      <p className="font-bold text-purple-700">{nowPlaying.metadata.container.name}</p>
-                    </div>
-                  )}
+                  {/* Combined Queue - Shows visitor requests first, then playlist */}
+                  <div>
+                    <h3 className="text-xl font-bold mb-3">📋 Up Next</h3>
+                    <div className="space-y-2">
+                      {/* Visitor Requests */}
+                      {nowPlaying.queue.map((song, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-3 bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg border-2 border-pink-200"
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <div className="text-lg font-bold text-pink-600">#{idx + 1}</div>
+                            <div className="flex-1">
+                              <p className="font-bold text-purple-900">{song.track_name}</p>
+                              <p className="text-sm text-gray-600">{song.artist_name}</p>
+                              {song.requested_by && (
+                                <p className="text-xs text-pink-600 font-semibold">🎤 Requested by {song.requested_by}</p>
+                              )}
+                            </div>
+                          </div>
+                          {/* Admin only - TODO: Add auth check */}
+                          <button
+                            onClick={async () => {
+                              if (confirm('Remove this song?')) {
+                                await fetch(`/api/requests/${song.id}`, { method: 'DELETE' });
+                              }
+                            }}
+                            className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-500 transition text-sm font-semibold"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      ))}
 
-                  {/* Playing Indicator */}
-                  {nowPlaying.playbackStatus?.playbackState === 'PLAYBACK_STATE_PLAYING' && (
-                    <div className="flex items-center gap-2 text-green-600">
-                      <div className="w-3 h-3 bg-green-600 rounded-full animate-pulse"></div>
-                      <span className="font-semibold">Playing</span>
-                    </div>
-                  )}
+                      {/* Playlist Next Track */}
+                      {nowPlaying.metadata.nextItem?.track && nowPlaying.queue.length === 0 && (
+                        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                          <div className="text-lg font-bold text-gray-400">#{1}</div>
+                          <div className="flex-1">
+                            <p className="font-bold">{nowPlaying.metadata.nextItem.track.name}</p>
+                            <p className="text-sm text-gray-600">{nowPlaying.metadata.nextItem.track.artist?.name}</p>
+                            <p className="text-xs text-gray-400">From playlist</p>
+                          </div>
+                        </div>
+                      )}
 
-                  {/* Next Track */}
-                  {nowPlaying.metadata.nextItem?.track && (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Up Next</p>
-                      <p className="text-sm font-semibold">{nowPlaying.metadata.nextItem.track.name}</p>
-                      <p className="text-xs text-gray-600">{nowPlaying.metadata.nextItem.track.artist?.name}</p>
+                      {nowPlaying.queue.length === 0 && !nowPlaying.metadata.nextItem?.track && (
+                        <div className="text-center py-4 text-gray-400">
+                          <p className="text-sm">No upcoming tracks</p>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <div className="text-4xl mb-3">😴</div>
                   <p className="text-lg font-bold text-gray-400">Nothing Playing</p>
                   <p className="text-sm text-gray-500 mt-2">No active playback</p>
-                </div>
-              )}
-            </div>
-
-            {/* Request Queue */}
-            <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-100">
-              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                <span>📋</span>
-                <span>Request Queue</span>
-                {nowPlaying.queue.length > 0 && (
-                  <span className="text-sm font-normal text-gray-500">({nowPlaying.queue.length})</span>
-                )}
-              </h2>
-
-              {nowPlaying.queue.length > 0 ? (
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {nowPlaying.queue.map((song, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-3 rounded-lg ${
-                        song.status === 'playing'
-                          ? 'bg-gradient-to-r from-green-100 to-emerald-100 border-2 border-green-300'
-                          : 'bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className={`font-bold ${song.status === 'playing' ? 'text-green-600' : 'text-gray-400'}`}>
-                          {song.status === 'playing' ? '▶' : `#${idx + 1}`}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-bold">{song.track_name}</p>
-                          <p className="text-sm text-gray-600">{song.artist_name}</p>
-                          {song.requested_by && (
-                            <p className="text-xs text-gray-400 mt-1">by {song.requested_by}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-3">✨</div>
-                  <p className="text-gray-400">No songs in queue</p>
-                  <p className="text-sm text-gray-500 mt-2">Be the first to request!</p>
                 </div>
               )}
             </div>
