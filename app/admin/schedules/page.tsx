@@ -12,6 +12,7 @@ interface Zone {
 interface Schedule {
   id: string;
   name: string;
+  playlist_uri: string;
   playlist_name: string;
   zone_name: string;
   days_of_week: number[];
