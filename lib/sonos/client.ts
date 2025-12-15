@@ -239,7 +239,6 @@ export class SonosClient {
             objectId: `spotify:playlist:${playlistId}`,
             serviceId: '12', // Spotify service ID
           },
-          playbackAction: playOnCompletion ? 'PLAY' : 'PAUSE',
           playModes: {
             repeat: false,
             shuffle: false,
@@ -251,6 +250,12 @@ export class SonosClient {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Failed to load playlist: ${error}`);
+    }
+
+    // Explicitly call play after loading
+    if (playOnCompletion) {
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for content to load
+      await this.play(groupId);
     }
   }
 
@@ -275,7 +280,6 @@ export class SonosClient {
             objectId: `spotify:track:${trackId}`,
             serviceId: '12', // Spotify service ID
           },
-          playbackAction: playOnCompletion ? 'PLAY' : 'PAUSE',
           playModes: {
             repeat: false,
             shuffle: false,
@@ -287,6 +291,12 @@ export class SonosClient {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Failed to load track: ${error}`);
+    }
+
+    // Explicitly call play after loading
+    if (playOnCompletion) {
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for content to load
+      await this.play(groupId);
     }
   }
 
