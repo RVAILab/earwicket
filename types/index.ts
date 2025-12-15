@@ -119,6 +119,7 @@ export interface SpotifyPlaylist {
   tracks: {
     total: number;
   };
+  duration_ms?: number;
 }
 
 export interface SpotifyTrack {

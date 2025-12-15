@@ -183,6 +183,29 @@ export class SpotifyClient {
       duration_ms: data.body.duration_ms,
     };
   }
+
+  async getPlaylistDuration(playlistId: string): Promise<number> {
+    await this.ensureAuthenticated();
+
+    let totalDuration = 0;
+    let offset = 0;
+    const limit = 100;
+
+    while (true) {
+      const data = await this.spotify.getPlaylistTracks(playlistId, { limit, offset });
+
+      for (const item of data.body.items) {
+        if (item.track && !item.track.is_local) {
+          totalDuration += item.track.duration_ms;
+        }
+      }
+
+      if (!data.body.next) break;
+      offset += limit;
+    }
+
+    return totalDuration;
+  }
 }
 
 // Export singleton instance

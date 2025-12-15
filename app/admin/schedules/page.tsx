@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { SpotifyPlaylist } from '@/types';
 
 interface Zone {
@@ -21,16 +21,64 @@ interface Schedule {
   enabled: boolean;
 }
 
+interface ScheduleWithDuration extends Schedule {
+  duration_ms?: number;
+}
+
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+const CACHE_KEY_SCHEDULES = 'earwicket_schedules';
+const CACHE_KEY_PLAYLISTS = 'earwicket_playlists';
+const CACHE_KEY_DURATIONS = 'earwicket_durations';
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+interface CacheData<T> {
+  data: T;
+  timestamp: number;
+}
+
+function getFromCache<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = localStorage.getItem(key);
+    if (!cached) return null;
+
+    const { data, timestamp }: CacheData<T> = JSON.parse(cached);
+    if (Date.now() - timestamp > CACHE_DURATION) {
+      localStorage.removeItem(key);
+      return null;
+    }
+
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function setToCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const cacheData: CacheData<T> = {
+      data,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem(key, JSON.stringify(cacheData));
+  } catch (error) {
+    console.error('Error setting cache:', error);
+  }
+}
 
 export default function SchedulesPage() {
   const [zones, setZones] = useState<Zone[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [schedules, setSchedules] = useState<ScheduleWithDuration[]>([]);
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [durations, setDurations] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -38,24 +86,94 @@ export default function SchedulesPage() {
 
   const fetchData = async () => {
     try {
-      const [zonesRes, schedulesRes, playlistsRes] = await Promise.all([
-        fetch('/api/zones'),
-        fetch('/api/schedules'),
-        fetch('/api/spotify/playlists'),
-      ]);
+      // Try to get from cache first
+      const cachedSchedules = getFromCache<Schedule[]>(CACHE_KEY_SCHEDULES);
+      const cachedPlaylists = getFromCache<SpotifyPlaylist[]>(CACHE_KEY_PLAYLISTS);
+      const cachedDurations = getFromCache<Record<string, number>>(CACHE_KEY_DURATIONS);
 
-      const zonesData = await zonesRes.json();
-      const schedulesData = await schedulesRes.json();
-      const playlistsData = await playlistsRes.json();
+      if (cachedSchedules && cachedPlaylists && cachedDurations) {
+        setSchedules(cachedSchedules.map(s => ({
+          ...s,
+          duration_ms: cachedDurations[extractPlaylistId(s.playlist_uri)],
+        })));
+        setPlaylists(cachedPlaylists);
+        setDurations(cachedDurations);
+        setLoading(false);
 
-      if (zonesData.success) setZones(zonesData.data);
-      if (schedulesData.success) setSchedules(schedulesData.data);
-      if (playlistsData.success) setPlaylists(playlistsData.data);
+        // Fetch fresh data in background
+        fetchFreshData();
+        return;
+      }
+
+      await fetchFreshData();
     } catch (error) {
       console.error('Error fetching data:', error);
-    } finally {
       setLoading(false);
     }
+  };
+
+  const fetchFreshData = async () => {
+    const [zonesRes, schedulesRes, playlistsRes] = await Promise.all([
+      fetch('/api/zones'),
+      fetch('/api/schedules'),
+      fetch('/api/spotify/playlists'),
+    ]);
+
+    const zonesData = await zonesRes.json();
+    const schedulesData = await schedulesRes.json();
+    const playlistsData = await playlistsRes.json();
+
+    if (zonesData.success) setZones(zonesData.data);
+
+    if (schedulesData.success) {
+      setToCache(CACHE_KEY_SCHEDULES, schedulesData.data);
+
+      // Extract unique playlist IDs
+      const playlistIds = [...new Set(
+        schedulesData.data.map((s: Schedule) => extractPlaylistId(s.playlist_uri))
+      )];
+
+      // Fetch durations
+      const durationsRes = await fetch('/api/spotify/playlist-durations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlistIds }),
+      });
+
+      const durationsData = await durationsRes.json();
+      if (durationsData.success) {
+        setDurations(durationsData.data);
+        setToCache(CACHE_KEY_DURATIONS, durationsData.data);
+
+        setSchedules(schedulesData.data.map((s: Schedule) => ({
+          ...s,
+          duration_ms: durationsData.data[extractPlaylistId(s.playlist_uri)],
+        })));
+      } else {
+        setSchedules(schedulesData.data);
+      }
+    }
+
+    if (playlistsData.success) {
+      setPlaylists(playlistsData.data);
+      setToCache(CACHE_KEY_PLAYLISTS, playlistsData.data);
+    }
+
+    setLoading(false);
+  };
+
+  const extractPlaylistId = (uri: string): string => {
+    return uri.split(':').pop() || uri;
+  };
+
+  const formatDuration = (ms: number | undefined): string => {
+    if (!ms) return '~';
+    const hours = Math.floor(ms / 3600000);
+    const minutes = Math.floor((ms % 3600000) / 60000);
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
   };
 
   const toggleDay = (day: number) => {
@@ -91,6 +209,9 @@ export default function SchedulesPage() {
       if (response.ok) {
         setShowForm(false);
         setSelectedDays([]);
+        // Clear cache to force refresh
+        localStorage.removeItem(CACHE_KEY_SCHEDULES);
+        localStorage.removeItem(CACHE_KEY_DURATIONS);
         fetchData();
       }
     } catch (error) {
@@ -122,6 +243,8 @@ export default function SchedulesPage() {
       if (response.ok) {
         setEditingSchedule(null);
         setSelectedDays([]);
+        localStorage.removeItem(CACHE_KEY_SCHEDULES);
+        localStorage.removeItem(CACHE_KEY_DURATIONS);
         fetchData();
       }
     } catch (error) {
@@ -133,6 +256,7 @@ export default function SchedulesPage() {
     setEditingSchedule(schedule);
     setSelectedDays(schedule.days_of_week);
     setShowForm(false);
+    setActiveMenu(null);
   };
 
   const toggleSchedule = async (id: string, currentEnabled: boolean) => {
@@ -142,7 +266,9 @@ export default function SchedulesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !currentEnabled }),
       });
+      localStorage.removeItem(CACHE_KEY_SCHEDULES);
       fetchData();
+      setActiveMenu(null);
     } catch (error) {
       console.error('Error toggling schedule:', error);
     }
@@ -159,12 +285,42 @@ export default function SchedulesPage() {
       });
 
       if (response.ok) {
+        localStorage.removeItem(CACHE_KEY_SCHEDULES);
+        localStorage.removeItem(CACHE_KEY_DURATIONS);
         fetchData();
+        setActiveMenu(null);
       }
     } catch (error) {
       console.error('Error deleting schedule:', error);
     }
   };
+
+  // Grid data structure
+  const gridData = useMemo(() => {
+    const grid: Record<number, Record<number, ScheduleWithDuration[]>> = {};
+
+    for (let day = 0; day < 7; day++) {
+      grid[day] = {};
+      for (let hour = 0; hour < 24; hour++) {
+        grid[day][hour] = [];
+      }
+    }
+
+    schedules.forEach(schedule => {
+      schedule.days_of_week.forEach(day => {
+        const startHour = parseInt(schedule.start_time.split(':')[0]);
+        const endHour = schedule.end_time
+          ? parseInt(schedule.end_time.split(':')[0])
+          : 23;
+
+        for (let hour = startHour; hour <= endHour; hour++) {
+          grid[day][hour].push(schedule);
+        }
+      });
+    });
+
+    return grid;
+  }, [schedules]);
 
   if (loading) {
     return (
@@ -179,7 +335,7 @@ export default function SchedulesPage() {
 
   return (
     <main className="min-h-screen p-8 bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <a href="/admin" className="text-blue-600 hover:underline mb-4 inline-block">
             ← Back to Dashboard
@@ -190,7 +346,7 @@ export default function SchedulesPage() {
         </div>
 
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">📅 Playlist Schedules</h2>
+          <h2 className="text-2xl font-bold">📅 Weekly Schedule Grid</h2>
           <button
             onClick={() => {
               setShowForm(!showForm);
@@ -386,68 +542,118 @@ export default function SchedulesPage() {
           </form>
         )}
 
-        {/* Schedules List */}
-        <div className="space-y-4">
-          {schedules.map((schedule) => (
-            <div
-              key={schedule.id}
-              className="bg-white p-6 rounded-xl shadow-lg flex justify-between items-start"
-            >
-              <div className="flex-1">
-                <h3 className="font-bold text-lg">{schedule.name}</h3>
-                <p className="text-sm text-gray-600">
-                  🎵 {schedule.playlist_name}
-                </p>
-                <p className="text-sm text-gray-600">
-                  📍 {schedule.zone_name}
-                </p>
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  {schedule.days_of_week.map((day) => (
-                    <span key={day} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
-                      {DAYS[day]}
-                    </span>
+        {/* Weekly Grid View */}
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <div className="inline-block min-w-full">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                    <th className="sticky left-0 bg-purple-600 px-4 py-3 text-left font-bold z-10">Time</th>
+                    {DAYS.map(day => (
+                      <th key={day} className="px-4 py-3 text-center font-bold min-w-[140px]">
+                        {day}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {HOURS.map(hour => (
+                    <tr key={hour} className="border-b border-gray-200 hover:bg-gray-50">
+                      <td className="sticky left-0 bg-white px-4 py-2 font-semibold text-gray-700 border-r border-gray-200 z-10">
+                        {hour.toString().padStart(2, '0')}:00
+                      </td>
+                      {DAYS.map((_, dayIndex) => (
+                        <td key={dayIndex} className="px-2 py-2 align-top border-r border-gray-100">
+                          <div className="space-y-1">
+                            {gridData[dayIndex]?.[hour]?.map(schedule => (
+                              <div
+                                key={schedule.id}
+                                className={`relative text-xs p-2 rounded-lg shadow-sm ${
+                                  schedule.enabled
+                                    ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
+                                    : 'bg-gray-300 text-gray-600'
+                                }`}
+                              >
+                                <div className="font-semibold truncate" title={schedule.playlist_name}>
+                                  {schedule.playlist_name}
+                                </div>
+                                <div className="text-[10px] opacity-90">
+                                  {formatDuration(schedule.duration_ms)}
+                                </div>
+
+                                {/* Actions Menu */}
+                                <div className="absolute top-1 right-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveMenu(activeMenu === schedule.id ? null : schedule.id);
+                                    }}
+                                    className="text-white hover:bg-white/20 rounded px-1"
+                                  >
+                                    ⋮
+                                  </button>
+
+                                  {activeMenu === schedule.id && (
+                                    <div className="absolute top-6 right-0 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-20 min-w-[120px]">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          startEditing(schedule);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600"
+                                      >
+                                        ✏️ Edit
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleSchedule(schedule.id, schedule.enabled);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-yellow-50 hover:text-yellow-600"
+                                      >
+                                        {schedule.enabled ? '⏸️ Disable' : '▶️ Enable'}
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteSchedule(schedule.id);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                      >
+                                        🗑️ Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
                   ))}
-                </div>
-                <p className="text-sm text-gray-600 mt-2">
-                  ⏰ {schedule.start_time.substring(0, 5)}
-                  {schedule.end_time && ` - ${schedule.end_time.substring(0, 5)}`}
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => toggleSchedule(schedule.id, schedule.enabled)}
-                  className={`px-4 py-2 rounded-lg font-semibold transition ${
-                    schedule.enabled
-                      ? 'bg-green-600 text-white hover:bg-green-500'
-                      : 'bg-gray-300 text-gray-600 hover:bg-gray-400'
-                  }`}
-                >
-                  {schedule.enabled ? 'Enabled' : 'Disabled'}
-                </button>
-                <button
-                  onClick={() => startEditing(schedule)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition font-semibold"
-                >
-                  ✏️ Edit
-                </button>
-                <button
-                  onClick={() => deleteSchedule(schedule.id)}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-500 transition font-semibold"
-                >
-                  🗑️ Delete
-                </button>
-              </div>
+                </tbody>
+              </table>
             </div>
-          ))}
+          </div>
         </div>
 
         {schedules.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-gray-500 mt-6">
             <div className="text-4xl mb-4">📅</div>
             <p>No schedules yet. Create your first schedule!</p>
           </div>
         )}
       </div>
+
+      {/* Click outside to close menu */}
+      {activeMenu && (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={() => setActiveMenu(null)}
+        />
+      )}
     </main>
   );
 }
