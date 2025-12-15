@@ -225,6 +225,25 @@ export class SonosClient {
     // Extract playlist ID from Spotify URI (spotify:playlist:ID)
     const playlistId = playlistUri.split(':')[2];
 
+    const payload = {
+      type: 'PLAYLIST',
+      id: {
+        objectId: `spotify:playlist:${playlistId}`,
+        serviceId: '12',
+      },
+      playbackAction: 'PLAY',
+      playModes: {
+        repeat: false,
+        shuffle: false,
+      },
+    };
+
+    console.log('[SONOS] loadPlaylist request:', {
+      groupId,
+      playlistUri,
+      payload,
+    });
+
     const response = await fetch(
       `${SONOS_API_BASE}/groups/${groupId}/playback/content`,
       {
@@ -233,29 +252,19 @@ export class SonosClient {
           Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          type: 'PLAYLIST',
-          id: {
-            objectId: `spotify:playlist:${playlistId}`,
-            serviceId: '12', // Spotify service ID
-          },
-          playModes: {
-            repeat: false,
-            shuffle: false,
-          },
-        }),
+        body: JSON.stringify(payload),
       }
     );
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to load playlist: ${error}`);
-    }
+    const responseText = await response.text();
+    console.log('[SONOS] loadPlaylist response:', {
+      status: response.status,
+      ok: response.ok,
+      body: responseText,
+    });
 
-    // Explicitly call play after loading
-    if (playOnCompletion) {
-      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for content to load
-      await this.play(groupId);
+    if (!response.ok) {
+      throw new Error(`Failed to load playlist: ${responseText}`);
     }
   }
 
