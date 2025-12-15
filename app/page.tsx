@@ -97,36 +97,60 @@ export default function Home() {
                 <span>Now Playing</span>
               </h2>
 
-              {nowPlaying.activity === 'scheduled' && nowPlaying.schedule ? (
+              {nowPlaying.metadata?.currentItem ? (
                 <div>
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-500 uppercase tracking-wide">Schedule</p>
-                    <p className="text-lg font-bold">{nowPlaying.schedule.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 uppercase tracking-wide">Playlist</p>
-                    <p className="text-xl font-black bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                      {nowPlaying.schedule.playlist_name}
+                  {/* Album Art */}
+                  {nowPlaying.metadata.currentItem.track?.imageUrl && (
+                    <img
+                      src={nowPlaying.metadata.currentItem.track.imageUrl}
+                      alt="Album art"
+                      className="w-full h-48 object-cover rounded-lg mb-4 shadow-lg"
+                    />
+                  )}
+
+                  {/* Track Info */}
+                  <div className="mb-3">
+                    <p className="text-xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                      {nowPlaying.metadata.currentItem.track?.name || 'Unknown Track'}
+                    </p>
+                    <p className="text-lg text-gray-700">
+                      {nowPlaying.metadata.currentItem.track?.artist?.name || 'Unknown Artist'}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {nowPlaying.metadata.currentItem.track?.album?.name || ''}
                     </p>
                   </div>
+
+                  {/* Container (Playlist/Album) */}
+                  {nowPlaying.metadata.container && (
+                    <div className="mb-3 p-3 bg-purple-50 rounded-lg">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">From</p>
+                      <p className="font-bold text-purple-700">{nowPlaying.metadata.container.name}</p>
+                    </div>
+                  )}
+
+                  {/* Playing Indicator */}
                   {nowPlaying.playbackStatus?.playbackState === 'PLAYBACK_STATE_PLAYING' && (
-                    <div className="mt-4 flex items-center gap-2 text-green-600">
+                    <div className="flex items-center gap-2 text-green-600">
                       <div className="w-3 h-3 bg-green-600 rounded-full animate-pulse"></div>
                       <span className="font-semibold">Playing</span>
                     </div>
                   )}
-                </div>
-              ) : nowPlaying.activity === 'visitor_request' ? (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-3">🎤</div>
-                  <p className="text-lg font-bold text-purple-600">Visitor Requests Playing</p>
-                  <p className="text-sm text-gray-600 mt-2">Check the queue →</p>
+
+                  {/* Next Track */}
+                  {nowPlaying.metadata.nextItem?.track && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Up Next</p>
+                      <p className="text-sm font-semibold">{nowPlaying.metadata.nextItem.track.name}</p>
+                      <p className="text-xs text-gray-600">{nowPlaying.metadata.nextItem.track.artist?.name}</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <div className="text-4xl mb-3">😴</div>
                   <p className="text-lg font-bold text-gray-400">Nothing Playing</p>
-                  <p className="text-sm text-gray-500 mt-2">No active schedule right now</p>
+                  <p className="text-sm text-gray-500 mt-2">No active playback</p>
                 </div>
               )}
             </div>

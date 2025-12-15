@@ -66,6 +66,31 @@ export async function GET(request: NextRequest) {
       console.error('Failed to get playback status:', error);
     }
 
+    // Get actual playback metadata (what's really playing)
+    let metadata = null;
+    try {
+      const creds = await db.queryOne<{ access_token: string }>(
+        `SELECT access_token FROM ${TABLES.SONOS_CREDENTIALS} LIMIT 1`
+      );
+
+      if (creds) {
+        const metadataResponse = await fetch(
+          `https://api.ws.sonos.com/control/api/v1/groups/${zone.sonos_group_id}/playbackMetadata`,
+          {
+            headers: {
+              Authorization: `Bearer ${creds.access_token}`,
+            },
+          }
+        );
+
+        if (metadataResponse.ok) {
+          metadata = await metadataResponse.json();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get metadata:', error);
+    }
+
     // Get visitor queue
     const queue = await db.query(
       `SELECT track_name, artist_name, requested_by, status FROM ${TABLES.SONG_REQUESTS}
@@ -81,6 +106,7 @@ export async function GET(request: NextRequest) {
         activity: state?.current_activity || 'idle',
         schedule: currentSchedule,
         playbackStatus,
+        metadata,
         queue,
       },
     });
