@@ -229,7 +229,7 @@ export class SonosClient {
       type: 'PLAYLIST',
       id: {
         objectId: `spotify:playlist:${playlistId}`,
-        serviceId: '12',
+        serviceId: '9', // Spotify service ID (confirmed from metadata)
       },
       playbackAction: 'PLAY',
       playModes: {
@@ -287,8 +287,9 @@ export class SonosClient {
           type: 'TRACK',
           id: {
             objectId: `spotify:track:${trackId}`,
-            serviceId: '12', // Spotify service ID
+            serviceId: '9', // Spotify service ID (confirmed from metadata)
           },
+          playbackAction: 'PLAY',
           playModes: {
             repeat: false,
             shuffle: false,
