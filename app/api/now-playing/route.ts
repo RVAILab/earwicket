@@ -84,17 +84,25 @@ export async function GET(request: NextRequest) {
         );
 
         if (metadataResponse.ok) {
-          metadata = await metadataResponse.json();
+          const data = await metadataResponse.json();
+          metadata = data;
+
+          // Log if we're getting Unknown Track
+          if (!data.currentItem?.track?.name) {
+            console.warn('[NOW-PLAYING] Metadata missing track info:', JSON.stringify(data));
+          }
+        } else {
+          console.error('[NOW-PLAYING] Failed to fetch metadata:', metadataResponse.status);
         }
       }
     } catch (error) {
       console.error('Failed to get metadata:', error);
     }
 
-    // Get visitor queue
+    // Get visitor queue - ONLY pending (not currently playing)
     const queue = await db.query(
       `SELECT id, track_name, artist_name, requested_by, status FROM ${TABLES.SONG_REQUESTS}
-       WHERE zone_id = $1 AND status IN ('pending', 'playing')
+       WHERE zone_id = $1 AND status = 'pending'
        ORDER BY created_at ASC`,
       [zoneId]
     );
