@@ -61,6 +61,14 @@ export default function VisitorPage() {
     }
   };
 
+  // Auto-refresh queue every 5 seconds
+  useEffect(() => {
+    if (!selectedZone) return;
+
+    const interval = setInterval(fetchQueue, 5000);
+    return () => clearInterval(interval);
+  }, [selectedZone]);
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
