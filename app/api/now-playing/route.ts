@@ -87,9 +87,43 @@ export async function GET(request: NextRequest) {
           const data = await metadataResponse.json();
           metadata = data;
 
-          // Log if we're getting Unknown Track
-          if (!data.currentItem?.track?.name) {
-            console.warn('[NOW-PLAYING] Metadata missing track info:', JSON.stringify(data));
+          // Enrich with Spotify data if track info is missing but we have a track ID
+          if (!data.currentItem?.track?.name && data.currentItem?.track?.id?.objectId) {
+            const trackUri = data.currentItem.track.id.objectId;
+            const trackId = trackUri.split(':')[2];
+
+            if (trackId) {
+              try {
+                // Fetch from Spotify
+                const spotifyCreds = await db.queryOne<{ access_token: string }>(
+                  `SELECT access_token FROM ${TABLES.SPOTIFY_CREDENTIALS} LIMIT 1`
+                );
+
+                if (spotifyCreds) {
+                  const spotifyResponse = await fetch(
+                    `https://api.spotify.com/v1/tracks/${trackId}`,
+                    {
+                      headers: {
+                        Authorization: `Bearer ${spotifyCreds.access_token}`,
+                      },
+                    }
+                  );
+
+                  if (spotifyResponse.ok) {
+                    const spotifyTrack = await spotifyResponse.json();
+
+                    // Enrich the metadata with Spotify data
+                    metadata.currentItem.track.name = spotifyTrack.name;
+                    metadata.currentItem.track.artist = { name: spotifyTrack.artists[0]?.name };
+                    metadata.currentItem.track.album = { name: spotifyTrack.album.name };
+
+                    console.log('[NOW-PLAYING] Enriched metadata from Spotify for:', spotifyTrack.name);
+                  }
+                }
+              } catch (enrichError) {
+                console.error('[NOW-PLAYING] Failed to enrich from Spotify:', enrichError);
+              }
+            }
           }
         } else {
           console.error('[NOW-PLAYING] Failed to fetch metadata:', metadataResponse.status);
