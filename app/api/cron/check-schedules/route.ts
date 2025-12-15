@@ -43,10 +43,11 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if we need to start this schedule
+        // Only start if: no state OR currently idle OR different schedule
         const needsToStart =
           !state ||
-          state.current_activity !== 'scheduled' ||
-          state.interrupted_schedule_id !== schedule.id;
+          (state.current_activity === 'idle') ||
+          (state.current_activity === 'scheduled' && state.interrupted_schedule_id !== schedule.id);
 
         if (needsToStart) {
           console.log(`[CRON] Zone "${zoneName}": Starting schedule "${schedule.name}"`);
