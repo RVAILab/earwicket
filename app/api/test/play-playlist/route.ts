@@ -28,18 +28,39 @@ export async function GET(request: NextRequest) {
     });
 
     // Try to load the playlist
-    await sonosClient.loadPlaylist(groupId, playlistUri, true);
+    try {
+      await sonosClient.loadPlaylist(groupId, playlistUri, true);
+      console.log('[TEST] Successfully loaded playlist');
+    } catch (loadError: any) {
+      console.error('[TEST] Load failed:', loadError);
+      throw loadError;
+    }
 
-    console.log('[TEST] Successfully loaded playlist');
+    // Check if it's actually playing now
+    try {
+      const status = await sonosClient.getPlaybackStatus(groupId);
+      console.log('[TEST] Playback status after load:', {
+        state: status.playbackState,
+        queueVersion: status.queueVersion,
+      });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Playlist loaded and playing',
-      data: {
-        groupId,
-        playlistUri,
-      },
-    });
+      return NextResponse.json({
+        success: true,
+        message: 'Playlist loaded',
+        data: {
+          groupId,
+          playlistUri,
+          playbackState: status.playbackState,
+        },
+      });
+    } catch (statusError) {
+      console.error('[TEST] Could not get status:', statusError);
+      return NextResponse.json({
+        success: true,
+        message: 'Playlist loaded (status unknown)',
+        data: { groupId, playlistUri },
+      });
+    }
   } catch (error: any) {
     console.error('[TEST] Error playing playlist:', error);
     return NextResponse.json(
