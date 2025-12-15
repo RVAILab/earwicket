@@ -25,8 +25,14 @@ interface ScheduleWithDuration extends Schedule {
   duration_ms?: number;
 }
 
+interface ScheduleBlock {
+  schedule: ScheduleWithDuration;
+  startHour: number;
+  startMinute: number;
+  durationHours: number;
+}
+
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 const CACHE_KEY_SCHEDULES = 'earwicket_schedules';
 const CACHE_KEY_PLAYLISTS = 'earwicket_playlists';
@@ -79,6 +85,7 @@ export default function SchedulesPage() {
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [collapsedHours, setCollapsedHours] = useState<Set<number>>(new Set([0, 1, 2, 3, 4, 5, 6, 7]));
 
   useEffect(() => {
     fetchData();
@@ -295,32 +302,83 @@ export default function SchedulesPage() {
     }
   };
 
-  // Grid data structure
+  // Grid data structure - one block per schedule per day
   const gridData = useMemo(() => {
-    const grid: Record<number, Record<number, ScheduleWithDuration[]>> = {};
+    const grid: Record<number, ScheduleBlock[]> = {};
 
     for (let day = 0; day < 7; day++) {
-      grid[day] = {};
-      for (let hour = 0; hour < 24; hour++) {
-        grid[day][hour] = [];
-      }
+      grid[day] = [];
     }
 
     schedules.forEach(schedule => {
       schedule.days_of_week.forEach(day => {
-        const startHour = parseInt(schedule.start_time.split(':')[0]);
-        const endHour = schedule.end_time
-          ? parseInt(schedule.end_time.split(':')[0])
-          : 23;
+        const [startHourStr, startMinuteStr] = schedule.start_time.split(':');
+        const startHour = parseInt(startHourStr);
+        const startMinute = parseInt(startMinuteStr);
 
-        for (let hour = startHour; hour <= endHour; hour++) {
-          grid[day][hour].push(schedule);
+        // Calculate duration based on end_time or playlist duration
+        let durationHours = 0;
+
+        if (schedule.end_time) {
+          const [endHourStr, endMinuteStr] = schedule.end_time.split(':');
+          const endHour = parseInt(endHourStr);
+          const endMinute = parseInt(endMinuteStr);
+
+          const startTotalMinutes = startHour * 60 + startMinute;
+          const endTotalMinutes = endHour * 60 + endMinute;
+          const durationMinutes = endTotalMinutes - startTotalMinutes;
+          durationHours = durationMinutes / 60;
+        } else if (schedule.duration_ms) {
+          durationHours = schedule.duration_ms / (1000 * 60 * 60);
+        } else {
+          durationHours = 1; // Default 1 hour if no duration available
         }
+
+        grid[day].push({
+          schedule,
+          startHour,
+          startMinute,
+          durationHours,
+        });
+      });
+    });
+
+    // Sort by start time within each day
+    Object.keys(grid).forEach(day => {
+      grid[parseInt(day)].sort((a, b) => {
+        const aTime = a.startHour * 60 + a.startMinute;
+        const bTime = b.startHour * 60 + b.startMinute;
+        return aTime - bTime;
       });
     });
 
     return grid;
   }, [schedules]);
+
+  // Determine which hours to display
+  const displayHours = useMemo(() => {
+    const hours: number[] = [];
+    const hasScheduleInHour: Set<number> = new Set();
+
+    // Check which hours have schedules
+    Object.values(gridData).forEach(daySchedules => {
+      daySchedules.forEach(block => {
+        const endHour = Math.ceil(block.startHour + block.durationHours);
+        for (let h = block.startHour; h < endHour; h++) {
+          hasScheduleInHour.add(h);
+        }
+      });
+    });
+
+    // Add hours 8-23 always, plus any early hours with schedules
+    for (let h = 0; h < 24; h++) {
+      if (h >= 8 || hasScheduleInHour.has(h)) {
+        hours.push(h);
+      }
+    }
+
+    return hours;
+  }, [gridData]);
 
   if (loading) {
     return (
@@ -546,40 +604,56 @@ export default function SchedulesPage() {
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           <div className="overflow-x-auto">
             <div className="inline-block min-w-full">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                    <th className="sticky left-0 bg-purple-600 px-4 py-3 text-left font-bold z-10">Time</th>
-                    {DAYS.map(day => (
-                      <th key={day} className="px-4 py-3 text-center font-bold min-w-[140px]">
-                        {day}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {HOURS.map(hour => (
-                    <tr key={hour} className="border-b border-gray-200 hover:bg-gray-50">
-                      <td className="sticky left-0 bg-white px-4 py-2 font-semibold text-gray-700 border-r border-gray-200 z-10">
-                        {hour.toString().padStart(2, '0')}:00
-                      </td>
-                      {DAYS.map((_, dayIndex) => (
-                        <td key={dayIndex} className="px-2 py-2 align-top border-r border-gray-100">
-                          <div className="space-y-1">
-                            {gridData[dayIndex]?.[hour]?.map(schedule => (
-                              <div
-                                key={schedule.id}
-                                className={`relative text-xs p-2 rounded-lg shadow-sm ${
-                                  schedule.enabled
-                                    ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
-                                    : 'bg-gray-300 text-gray-600'
-                                }`}
-                              >
-                                <div className="font-semibold truncate" title={schedule.playlist_name}>
-                                  {schedule.playlist_name}
+              <div className="grid grid-cols-8 border-b border-gray-300">
+                {/* Header */}
+                <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-3 font-bold sticky left-0 z-20">
+                  Time
+                </div>
+                {DAYS.map(day => (
+                  <div key={day} className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-3 text-center font-bold min-w-[140px]">
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Time slots with schedule blocks */}
+              <div className="relative">
+                {displayHours.map(hour => (
+                  <div key={hour} className="grid grid-cols-8 border-b border-gray-200" style={{ minHeight: '80px' }}>
+                    <div className="sticky left-0 bg-white px-4 py-2 font-semibold text-gray-700 border-r border-gray-200 z-10 flex items-start">
+                      {hour.toString().padStart(2, '0')}:00
+                    </div>
+                    {DAYS.map((_, dayIndex) => (
+                      <div key={dayIndex} className="relative border-r border-gray-100 min-h-[80px]">
+                        {/* Render schedule blocks that start in this hour */}
+                        {gridData[dayIndex]?.filter(block => block.startHour === hour).map(block => {
+                          const heightPerHour = 80; // pixels per hour
+                          const height = block.durationHours * heightPerHour;
+                          const topOffset = (block.startMinute / 60) * heightPerHour;
+
+                          return (
+                            <div
+                              key={block.schedule.id}
+                              className={`absolute left-1 right-1 rounded-lg shadow-sm overflow-hidden ${
+                                block.schedule.enabled
+                                  ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
+                                  : 'bg-gray-300 text-gray-600'
+                              }`}
+                              style={{
+                                top: `${topOffset}px`,
+                                height: `${height}px`,
+                                minHeight: '60px',
+                              }}
+                            >
+                              <div className="p-2 h-full flex flex-col">
+                                <div className="font-semibold text-sm truncate" title={block.schedule.name}>
+                                  {block.schedule.name}
                                 </div>
-                                <div className="text-[10px] opacity-90">
-                                  {formatDuration(schedule.duration_ms)}
+                                <div className="text-xs opacity-90 truncate" title={block.schedule.playlist_name}>
+                                  {block.schedule.playlist_name}
+                                </div>
+                                <div className="text-[10px] opacity-90 mt-auto">
+                                  {block.startHour.toString().padStart(2, '0')}:{block.startMinute.toString().padStart(2, '0')} • {formatDuration(block.schedule.duration_ms)}
                                 </div>
 
                                 {/* Actions Menu */}
@@ -587,19 +661,19 @@ export default function SchedulesPage() {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setActiveMenu(activeMenu === schedule.id ? null : schedule.id);
+                                      setActiveMenu(activeMenu === block.schedule.id ? null : block.schedule.id);
                                     }}
-                                    className="text-white hover:bg-white/20 rounded px-1"
+                                    className="text-white hover:bg-white/20 rounded px-1 text-sm"
                                   >
                                     ⋮
                                   </button>
 
-                                  {activeMenu === schedule.id && (
-                                    <div className="absolute top-6 right-0 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-20 min-w-[120px]">
+                                  {activeMenu === block.schedule.id && (
+                                    <div className="absolute top-6 right-0 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-30 min-w-[120px]">
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          startEditing(schedule);
+                                          startEditing(block.schedule);
                                         }}
                                         className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600"
                                       >
@@ -608,16 +682,16 @@ export default function SchedulesPage() {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          toggleSchedule(schedule.id, schedule.enabled);
+                                          toggleSchedule(block.schedule.id, block.schedule.enabled);
                                         }}
                                         className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-yellow-50 hover:text-yellow-600"
                                       >
-                                        {schedule.enabled ? '⏸️ Disable' : '▶️ Enable'}
+                                        {block.schedule.enabled ? '⏸️ Disable' : '▶️ Enable'}
                                       </button>
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          deleteSchedule(schedule.id);
+                                          deleteSchedule(block.schedule.id);
                                         }}
                                         className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                                       >
@@ -627,14 +701,14 @@ export default function SchedulesPage() {
                                   )}
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
