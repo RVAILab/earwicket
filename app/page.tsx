@@ -13,6 +13,7 @@ interface NowPlaying {
   activity: string;
   schedule: { name: string; playlist_name: string } | null;
   playbackStatus: any;
+  metadata: any; // Sonos playback metadata
   queue: Array<{ track_name: string; artist_name: string; requested_by: string | null; status: string }>;
 }
 
