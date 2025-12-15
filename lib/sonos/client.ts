@@ -257,6 +257,7 @@ export class SonosClient {
   async loadTrack(groupId: string, trackUri: string, playOnCompletion: boolean = true): Promise<void> {
     await this.ensureAuthenticated();
 
+    // Use the EXACT same format as playlist, just with track instead
     // Extract track ID from Spotify URI (spotify:track:ID)
     const trackId = trackUri.split(':')[2];
 
@@ -269,8 +270,16 @@ export class SonosClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          trackId: `spotify:track:${trackId}`,
-          playOnCompletion: playOnCompletion,
+          type: 'TRACK',
+          id: {
+            objectId: `spotify:track:${trackId}`,
+            serviceId: '12', // Spotify service ID
+          },
+          playbackAction: playOnCompletion ? 'PLAY' : 'PAUSE',
+          playModes: {
+            repeat: false,
+            shuffle: false,
+          },
         }),
       }
     );
