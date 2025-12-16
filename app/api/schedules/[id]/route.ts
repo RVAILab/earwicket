@@ -18,6 +18,7 @@ export async function PATCH(
     let paramCount = 1;
 
     const allowedFields = [
+      'zone_id',
       'name',
       'playlist_uri',
       'playlist_name',

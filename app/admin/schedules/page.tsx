@@ -14,6 +14,7 @@ interface Schedule {
   name: string;
   playlist_uri: string;
   playlist_name: string;
+  zone_id: string;
   zone_name: string;
   days_of_week: number[];
   start_time: string;
@@ -238,6 +239,7 @@ export default function SchedulesPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          zone_id: formData.get('zone_id'),
           name: formData.get('name'),
           playlist_uri: formData.get('playlist_uri'),
           playlist_name: selectedPlaylist?.name || editingSchedule.playlist_name,
@@ -430,6 +432,17 @@ export default function SchedulesPage() {
                   defaultValue={editingSchedule.name}
                   className="w-full px-4 py-2 border rounded-lg"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">Zone</label>
+                <select name="zone_id" required defaultValue={editingSchedule.zone_id} className="w-full px-4 py-2 border rounded-lg">
+                  {zones.map((zone) => (
+                    <option key={zone.id} value={zone.id}>
+                      {zone.environment_name} - {zone.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
