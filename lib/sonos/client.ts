@@ -213,7 +213,9 @@ export class SonosClient {
     );
 
     if (!response.ok) {
-      throw new Error('Failed to fetch playback status');
+      const errorText = await response.text();
+      console.error(`[SONOS] Failed to fetch playback status for group ${groupId}: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`Failed to fetch playback status: ${response.status} ${response.statusText}`);
     }
 
     return await response.json();
