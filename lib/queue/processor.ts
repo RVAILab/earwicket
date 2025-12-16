@@ -44,13 +44,25 @@ export async function processZoneQueue(zoneId: string, sonosGroupId: string): Pr
   console.log(`[QUEUE] Zone ${zoneId}: ${playingRequest ? 'Has' : 'No'} playing request`);
 
   // Check actual Sonos playback status
-  const playbackStatus = await sonosClient.getPlaybackStatus(sonosGroupId);
-  const isPlaying = playbackStatus.playbackState === 'PLAYBACK_STATE_PLAYING';
+  let playbackStatus: SonosPlaybackStatus;
+  let isPlaying = false;
 
-  console.log(`[QUEUE] Zone ${zoneId} Sonos status:`, {
-    state: playbackStatus.playbackState,
-    isPlaying,
-  });
+  try {
+    playbackStatus = await sonosClient.getPlaybackStatus(sonosGroupId);
+    isPlaying = playbackStatus.playbackState === 'PLAYBACK_STATE_PLAYING';
+
+    console.log(`[QUEUE] Zone ${zoneId} Sonos status:`, {
+      state: playbackStatus.playbackState,
+      isPlaying,
+    });
+  } catch (error: any) {
+    console.error(`[QUEUE] Zone ${zoneId}: Failed to get playback status:`, error.message);
+    // If we can't get status, assume not playing and continue
+    playbackStatus = {
+      playbackState: 'PLAYBACK_STATE_IDLE',
+      queueVersion: '',
+    };
+  }
 
   // Case 1: We have a pending request and no song is currently playing
   if (pendingRequests.length > 0 && !playingRequest) {
@@ -149,6 +161,58 @@ export async function processZoneQueue(zoneId: string, sonosGroupId: string): Pr
       await resumeSchedule(zoneId, sonosGroupId, state);
     }
   }
+
+  // Case 3: No visitor requests and idle - check if a schedule should be playing
+  if (!playingRequest && pendingRequests.length === 0 && state?.current_activity !== 'scheduled') {
+    console.log(`[QUEUE] Zone ${zoneId}: Idle, checking for active schedule`);
+    await checkAndStartSchedule(zoneId, sonosGroupId, state);
+  }
+}
+
+/**
+ * Check if there's an active schedule and start it if needed
+ */
+async function checkAndStartSchedule(
+  zoneId: string,
+  sonosGroupId: string,
+  state: PlaybackState | null
+): Promise<void> {
+  // Get active schedule for this zone
+  const activeSchedule = await getActiveSchedule(zoneId);
+
+  if (!activeSchedule) {
+    console.log(`[QUEUE] Zone ${zoneId}: No active schedule at this time`);
+    return;
+  }
+
+  // If we're already on this schedule, don't restart
+  if (state?.current_activity === 'scheduled' && state?.interrupted_schedule_id === activeSchedule.id) {
+    console.log(`[QUEUE] Zone ${zoneId}: Already playing schedule "${activeSchedule.name}"`);
+    return;
+  }
+
+  console.log(`[QUEUE] Zone ${zoneId}: Starting schedule "${activeSchedule.name}"`);
+
+  // Load and play the scheduled playlist
+  await sonosClient.loadPlaylist(sonosGroupId, activeSchedule.playlist_uri, true);
+
+  // Update playback state
+  await db.execute(
+    `INSERT INTO ${TABLES.PLAYBACK_STATE}
+     (zone_id, current_activity, interrupted_schedule_id)
+     VALUES ($1, 'scheduled', $2)
+     ON CONFLICT (zone_id)
+     DO UPDATE SET
+       current_activity = 'scheduled',
+       interrupted_schedule_id = $2,
+       interrupted_at = NULL,
+       interrupted_track = NULL,
+       interrupted_position_ms = NULL,
+       last_updated = CURRENT_TIMESTAMP`,
+    [zoneId, activeSchedule.id]
+  );
+
+  console.log(`[QUEUE] Zone ${zoneId}: Successfully started schedule`);
 }
 
 /**
@@ -160,13 +224,8 @@ async function resumeSchedule(
   state: PlaybackState | null
 ): Promise<void> {
   if (!state || !state.interrupted_schedule_id) {
-    console.log(`[QUEUE] Zone ${zoneId}: No interrupted schedule to resume, marking idle`);
-    await db.execute(
-      `UPDATE ${TABLES.PLAYBACK_STATE}
-       SET current_activity = 'idle', last_updated = CURRENT_TIMESTAMP
-       WHERE zone_id = $1`,
-      [zoneId]
-    );
+    console.log(`[QUEUE] Zone ${zoneId}: No interrupted schedule to resume, checking for active schedule`);
+    await checkAndStartSchedule(zoneId, sonosGroupId, state);
     return;
   }
 
@@ -194,15 +253,7 @@ async function resumeSchedule(
 
     console.log(`[QUEUE] Zone ${zoneId}: Successfully resumed schedule`);
   } else {
-    console.log(`[QUEUE] Zone ${zoneId}: Interrupted schedule no longer active, marking idle`);
-    await db.execute(
-      `UPDATE ${TABLES.PLAYBACK_STATE}
-       SET current_activity = 'idle',
-           interrupted_schedule_id = NULL,
-           interrupted_at = NULL,
-           last_updated = CURRENT_TIMESTAMP
-       WHERE zone_id = $1`,
-      [zoneId]
-    );
+    console.log(`[QUEUE] Zone ${zoneId}: Interrupted schedule no longer active, checking for new schedule`);
+    await checkAndStartSchedule(zoneId, sonosGroupId, state);
   }
 }
