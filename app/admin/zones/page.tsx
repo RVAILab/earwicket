@@ -31,6 +31,7 @@ export default function ZonesPage() {
   const [loading, setLoading] = useState(true);
   const [showEnvForm, setShowEnvForm] = useState(false);
   const [showZoneForm, setShowZoneForm] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -69,6 +70,33 @@ export default function ZonesPage() {
       }
     } catch (error) {
       console.error('Error fetching groups:', error);
+    }
+  };
+
+  // Refresh Sonos group IDs from API
+  const refreshSonosGroups = async () => {
+    if (!confirm('Refresh all zone group IDs from Sonos? This will update stale group IDs.')) {
+      return;
+    }
+
+    setRefreshing(true);
+    try {
+      const response = await fetch('/api/admin/refresh-sonos-groups', {
+        method: 'POST',
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        alert(`Successfully refreshed!\n\nUpdated: ${data.data.updated.length} zones\nNot found: ${data.data.notFound.length} zones`);
+        fetchData();
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error refreshing groups:', error);
+      alert('Failed to refresh groups');
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -277,12 +305,21 @@ export default function ZonesPage() {
         <div>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold">📍 Zones</h2>
-            <button
-              onClick={() => setShowZoneForm(!showZoneForm)}
-              className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-500 transition font-semibold"
-            >
-              + New Zone
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={refreshSonosGroups}
+                disabled={refreshing}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {refreshing ? '🔄 Refreshing...' : '🔄 Refresh Groups'}
+              </button>
+              <button
+                onClick={() => setShowZoneForm(!showZoneForm)}
+                className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-500 transition font-semibold"
+              >
+                + New Zone
+              </button>
+            </div>
           </div>
 
           {showZoneForm && (
