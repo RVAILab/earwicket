@@ -21,15 +21,8 @@ export async function POST(request: NextRequest) {
     const targetValue = request.headers.get('x-sonos-target-value') || '';
     const householdId = request.headers.get('x-sonos-household-id') || '';
 
-    // Check if signature validation should be skipped (for debugging only)
-    const skipValidation = process.env.SONOS_WEBHOOK_SKIP_VALIDATION === 'true';
-
-    if (skipValidation) {
-      console.warn('[WEBHOOK] ⚠️  SIGNATURE VALIDATION IS DISABLED - FOR DEBUGGING ONLY');
-    }
-
     // Verify signature to ensure request is from Sonos
-    const isValid = skipValidation || verifySignature({
+    const isValid = verifySignature({
       seqId,
       namespace,
       type,
@@ -90,14 +83,8 @@ function verifySignature(params: {
   const clientId = process.env.SONOS_CLIENT_ID || '';
   const clientSecret = process.env.SONOS_CLIENT_SECRET || '';
 
-  // Check for missing credentials
   if (!clientId || !clientSecret) {
-    console.error('[WEBHOOK] Missing Sonos credentials!', {
-      hasClientId: !!clientId,
-      hasClientSecret: !!clientSecret,
-      clientIdLength: clientId.length,
-      clientSecretLength: clientSecret.length,
-    });
+    console.error('Missing Sonos credentials for webhook validation');
     return false;
   }
 
@@ -117,25 +104,7 @@ function verifySignature(params: {
     .update(message, 'utf8')
     .digest('base64url');
 
-  // Detailed logging for debugging (without exposing full secrets)
-  const isValid = hash === params.signature;
-  console.log('[WEBHOOK] Signature validation:', {
-    result: isValid ? 'VALID ✅' : 'INVALID ❌',
-    seqId: params.seqId,
-    namespace: params.namespace,
-    type: params.type,
-    targetType: params.targetType,
-    targetValue: params.targetValue,
-    clientIdLength: clientId.length,
-    clientSecretLength: clientSecret.length,
-    receivedSigLength: params.signature.length,
-    computedSigLength: hash.length,
-    receivedSigPreview: params.signature.substring(0, 10) + '...',
-    computedSigPreview: hash.substring(0, 10) + '...',
-    fullMatch: hash === params.signature,
-  });
-
-  return isValid;
+  return hash === params.signature;
 }
 
 /**
