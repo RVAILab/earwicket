@@ -45,9 +45,17 @@ export default function Home() {
   useEffect(() => {
     if (!selectedZone) return;
 
+    // Clear old data immediately when zone changes
+    setNowPlaying(null);
+
     // Fetch now playing info
     const fetchNowPlaying = () => {
-      fetch(`/api/now-playing?zone_id=${selectedZone}`)
+      fetch(`/api/now-playing?zone_id=${selectedZone}`, {
+        cache: 'no-store', // Prevent browser caching
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      })
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
@@ -98,7 +106,7 @@ export default function Home() {
 
         {/* Now Playing & Full Queue */}
         {nowPlaying && (
-          <div className="mb-12">
+          <div key={selectedZone} className="mb-12">
             <div className="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-gray-100">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-3xl font-bold flex items-center gap-2">
