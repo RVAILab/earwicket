@@ -50,7 +50,7 @@ export async function resolveZoneGroup(
 
   // Step 1: Check if cached group ID is still valid
   if (zone.sonos_group_id && isCacheValid(zone)) {
-    const groups = await sonosClient.getGroups();
+    const groups = await sonosClient.getGroups(householdId);
     const cachedGroup = groups.find(g => g.id === zone.sonos_group_id);
 
     if (cachedGroup && groupMatchesDevices(cachedGroup, zone.device_player_ids)) {
@@ -67,7 +67,7 @@ export async function resolveZoneGroup(
   }
 
   // Step 2: Search for existing group with matching devices
-  const groups = await sonosClient.getGroups();
+  const groups = await sonosClient.getGroups(householdId);
   const matchingGroup = groups.find(g =>
     groupMatchesDevices(g, zone.device_player_ids)
   );
@@ -171,7 +171,7 @@ async function getOnlinePlayerIds(
   requestedPlayerIds: string[]
 ): Promise<string[]> {
   // Get all current groups (which include only online devices)
-  const groups = await sonosClient.getGroups();
+  const groups = await sonosClient.getGroups(householdId);
 
   // Extract all online player IDs from all groups
   const onlinePlayerIds = new Set<string>();

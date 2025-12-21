@@ -183,17 +183,22 @@ export class SonosClient {
   }
 
   // Sonos API Methods
-  async getGroups(): Promise<SonosGroup[]> {
+  async getGroups(householdId?: string): Promise<SonosGroup[]> {
     await this.ensureAuthenticated();
 
-    const response = await fetch(`${SONOS_API_BASE}/households/${this.householdId}/groups`, {
+    const targetHouseholdId = householdId || this.householdId;
+    if (!targetHouseholdId) {
+      throw new Error('No household ID available');
+    }
+
+    const response = await fetch(`${SONOS_API_BASE}/households/${targetHouseholdId}/groups`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
       },
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch groups');
+      throw new Error(`Failed to fetch groups: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();

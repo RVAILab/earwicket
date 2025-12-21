@@ -35,10 +35,14 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
    - Contains timezone for schedule evaluation
    - `household_id` links to Sonos API household
 
-2. **earwicket_zones** - Sonos groups (speakers/rooms)
-   - Maps to Sonos group IDs
+2. **earwicket_zones** - Device-based zone configurations
+   - Defines sets of Sonos devices that should play together
+   - `device_player_ids` (JSONB array) - Persistent list of player IDs that define this zone
+   - `sonos_group_id` (nullable) - Cached Sonos group ID, resolved dynamically at runtime
+   - `group_id_cached_at` - When the group ID was last resolved
+   - `group_id_cache_ttl_minutes` - Cache validity period (default: 30 minutes)
    - Belongs to an environment
-   - `sonos_group_id` is the actual Sonos API group identifier
+   - Zones are resilient to Sonos group changes (regrouping devices doesn't break zones)
 
 3. **earwicket_schedules** - Scheduled playlist playback
    - Links to a zone
@@ -222,9 +226,11 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
 - `DELETE /api/requests/{id}` - Remove pending request
 
 **Playback Control:**
-- `POST /api/playback/play` - Play (requires group_id)
-- `POST /api/playback/pause` - Pause (requires group_id)
-- `POST /api/playback/skip` - Skip to next track (requires group_id)
+- `POST /api/playback/play` - Play (accepts zone_id or group_id)
+- `POST /api/playback/pause` - Pause (accepts zone_id or group_id)
+- `POST /api/playback/skip` - Skip to next track (accepts zone_id or group_id)
+
+Note: All playback endpoints support zone_id with automatic group resolution, or group_id for direct control.
 
 ### Sonos Integration
 
@@ -237,6 +243,8 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
 - `POST /api/sonos/households` - Switch active household
 - `GET /api/sonos/groups` - List groups (uses stored household)
 - `GET /api/sonos/groups/{householdId}` - List groups for specific household
+- `GET /api/sonos/players/{householdId}` - List players/devices in household
+- `POST /api/sonos/groups/create` - Create group from player IDs
 - `POST /api/sonos/webhook` - Receive Sonos events (not fully implemented)
 
 ### Spotify Integration
@@ -265,6 +273,59 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
 - `GET /api/playback-status` - Get Sonos playback status
 - `POST /api/test/reset-queue` - Clear stuck queue states
 - `GET /api/subscriptions/subscribe-all` - Subscribe to Sonos webhooks
+
+## Device-Based Zone Management
+
+### Architecture Overview
+
+Zones define persistent device configurations rather than ephemeral Sonos group IDs. This makes the system resilient to users regrouping speakers in the Sonos app.
+
+**How It Works:**
+- Each zone stores a `device_player_ids` array (persistent player IDs)
+- At runtime, the system resolves zone → Sonos group ID through a 3-step process:
+  1. **Check cache**: If cached group ID is valid (< 30 minutes old) and matches devices, use it
+  2. **Find existing**: Search for an existing Sonos group with exact device match
+  3. **Create new**: If no match found, create a new group with those devices
+- Automatic group creation when devices aren't grouped correctly
+- Partial group fallback: Uses available online devices if some are offline
+
+### Group Resolution Flow
+
+```
+Zone Selected for Playback
+        ↓
+Check device_player_ids array
+        ↓
+Cache valid? → Yes → Use cached group ID
+        ↓ No
+Search existing groups for exact device match
+        ↓
+Found? → Yes → Use matched group ID, update cache
+        ↓ No
+Filter to online devices only
+        ↓
+Create new Sonos group with those devices
+        ↓
+Update cache with new group ID
+        ↓
+Use resolved group ID for playback
+```
+
+### Implementation Files
+
+- **`lib/sonos/groupResolver.ts`** - Core resolution logic with caching
+- **`lib/sonos/client.ts`** - Includes `getPlayers()` and `createGroup()` methods
+- **`app/admin/zones/page.tsx`** - Device multi-select UI for zone creation
+- **Cron jobs** - `check-schedules` and `process-queue` resolve groups before playback
+- **Playback endpoints** - All support zone_id parameter with automatic resolution
+
+### Design Benefits
+
+- Zones survive device regrouping in Sonos app
+- Automatic group creation on-demand
+- Graceful offline device handling (uses available devices)
+- 30-minute cache reduces API overhead
+- Backward compatible with direct group_id usage
 
 ## Critical Implementation Details
 
@@ -299,13 +360,15 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
 **Current Implementation:**
 - OAuth tokens stored globally (singleton tables)
 - Environments map to Sonos households via `household_id`
-- Groups fetched per household via `/api/sonos/groups/{householdId}`
+- Devices/players fetched per household via `/api/sonos/players/{householdId}`
+- Groups created dynamically per household via `/api/sonos/groups/create`
 - Works but has architectural tension (global tokens vs multi-household)
 
 **Design Decision:**
-- User treats "Environment = Household"
-- Each environment represents a physical location with its own Sonos system
-- Zones are the individual speaker groups within that environment
+- Environment = Household (one per physical location with a Sonos system)
+- Zones define device configurations (sets of speakers) within that environment
+- Dynamic group resolution: Zones automatically find or create the appropriate Sonos group at runtime
+- This approach is resilient to users regrouping speakers in the Sonos app
 
 ### Timezone Handling
 
@@ -325,7 +388,13 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
 
 ### High Priority
 
-1. **Webhook Implementation Incomplete**
+1. ~~**Zone Group ID Stability**~~ ✅ **RESOLVED**
+   - **Fixed**: Zones now use device configurations instead of ephemeral group IDs
+   - System automatically resolves/creates correct groups at runtime
+   - 30-minute caching reduces API overhead
+   - See "Device-Based Zone Management" section above
+
+2. **Webhook Implementation Incomplete**
    - Webhook endpoint exists (`/api/sonos/webhook`)
    - Signature verification implemented
    - Subscription logic exists (`/api/subscriptions/subscribe-all`)
@@ -333,80 +402,80 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
    - **TODO**: Use webhooks instead of polling for real-time updates
    - Currently polling every 3 seconds (inefficient)
 
-2. **Metadata Enrichment Overhead**
+3. **Metadata Enrichment Overhead**
    - Every Now Playing fetch calls Spotify API (with auto token refresh)
    - Should cache enriched metadata
    - **TODO**: Cache track details by Spotify ID (15-30 min TTL)
    - **IMPROVED**: Now uses `spotifyClient` with automatic token refresh
 
-3. **No Authentication on Admin Features**
+4. **No Authentication on Admin Features**
    - Admin controls visible to all users
    - JWT auth exists but not enforced on routes
    - **TODO**: Add middleware to protect `/admin/*` and admin API endpoints
    - **TODO**: Add auth check for Skip/Pause/Delete buttons on home page
 
-4. **Position Tracking Not Implemented**
+5. **Position Tracking Not Implemented**
    - Database has `interrupted_position_ms` field
    - Not populated when interrupting schedules
    - Schedules always resume from beginning, not mid-track
    - **TODO**: Store and restore playback position
 
-5. **Error Handling Inconsistent**
+6. **Error Handling Inconsistent**
    - Some endpoints return generic errors
    - Token refresh failures not always handled gracefully
    - **TODO**: Standardize error responses and add retry logic
 
 ### Medium Priority
 
-6. **Sonos Credential Architecture**
+7. **Sonos Credential Architecture**
    - Tokens stored globally but system supports multiple households
    - **REFACTOR NEEDED**: Store credentials per environment/household
    - Current workaround: Environments reference household_id
    - Works but creates confusion
 
-7. **Schedule Conflicts Not Handled**
+8. **Schedule Conflicts Not Handled**
    - Multiple schedules can overlap on same zone
    - Currently uses first match in evaluation
    - **TODO**: Add priority field or conflict detection
 
-8. **Queue Processor Reliability**
+9. **Queue Processor Reliability**
    - Detects track completion by checking if Sonos is playing
    - **Issue**: Doesn't differentiate between "track ended" vs "user paused"
    - **TODO**: Use webhooks for accurate track-end detection
    - **TODO**: Add retry logic for failed track loads
 
-9. **No Subscription Management**
+10. **No Subscription Management**
    - Webhooks expire after 3 days
    - No automatic renewal
    - **TODO**: Add cron to re-subscribe or subscribe on zone creation
 
-10. **Type Safety**
+11. **Type Safety**
     - Many `any` types used (especially for Sonos/Spotify responses)
     - **TODO**: Create proper TypeScript interfaces for all API responses
     - `zod` is installed but not used for validation
 
 ### Low Priority
 
-11. **UI State Management**
+12. **UI State Management**
     - All components use local useState
     - Causes multiple API calls for same data
     - **TODO**: Consider React Query or global state (Zustand/Context)
 
-12. **No Logging/Monitoring**
+13. **No Logging/Monitoring**
     - Console.log for debugging
     - **TODO**: Add structured logging (Pino, Winston)
     - **TODO**: Add error tracking (Sentry)
 
-13. **No Tests**
+14. **No Tests**
     - Zero test coverage
     - **TODO**: Add unit tests for scheduler logic
     - **TODO**: Add integration tests for API endpoints
 
-14. **Hardcoded Timezones**
+15. **Hardcoded Timezones**
     - Only 4 US timezones in dropdown
     - **TODO**: Support all IANA timezones or auto-detect
 
-15. **No Volume Control**
+16. **No Volume Control**
     - Schedules can't set volume levels
     - **TODO**: Add volume control to schedules and playback API
 
@@ -441,15 +510,17 @@ app/
 
 lib/
 ├── sonos/
-│   ├── client.ts          # Sonos API wrapper
+│   ├── client.ts          # Sonos API wrapper (includes getPlayers, createGroup)
+│   ├── groupResolver.ts   # Device-based zone → group resolution
 │   └── subscriptions.ts   # Webhook subscription logic
 ├── spotify/
 │   └── client.ts          # Spotify API wrapper
 ├── db/
-│   ├── client.ts          # Database wrapper
-│   ├── tables.ts          # Table name constants
-│   ├── schema.sql         # Original schema
-│   └── schema-prefixed.sql # With earwicket_ prefix
+│   ├── client.ts              # Database wrapper
+│   ├── tables.ts              # Table name constants
+│   ├── schema.sql             # Original schema
+│   ├── schema-prefixed.sql    # With earwicket_ prefix
+│   └── migration-device-zones.sql # NEW: Device-based zone migration
 ├── scheduler/
 │   └── index.ts           # Schedule evaluation logic
 ├── queue/
@@ -518,6 +589,8 @@ CRON_SECRET="..." # Bearer token for cron endpoints
 ```
 Cron (30 min) → Evaluate schedules (timezone-aware)
                 ↓
+         Resolve zone → Sonos group (via groupResolver)
+                ↓
          Check visitor queue
                 ↓
          Check Sonos playing
@@ -532,7 +605,9 @@ Visitor → Search Spotify → Select track → Rate limit check
                                               ↓
                                     Insert as 'pending'
                                               ↓
-Cron (1 min) → Process queue → Pause current → Load track → Play
+Cron (1 min) → Resolve zone → group → Process queue
+                                              ↓
+                                 Pause current → Load track → Play
                                               ↓
                                     Mark as 'playing'
                                               ↓
@@ -542,7 +617,9 @@ Cron (1 min) → Process queue → Pause current → Load track → Play
 ### Metadata Enrichment
 
 ```
-UI poll (3s) → /api/now-playing → Fetch Sonos metadata
+UI poll (3s) → /api/now-playing → Resolve zone → Sonos group
+                                        ↓
+                                  Fetch Sonos metadata
                                         ↓
                                   Spotify track detected?
                                         ↓
@@ -561,6 +638,11 @@ UI poll (3s) → /api/now-playing → Fetch Sonos metadata
 ## Debugging Guide
 
 ### Common Issues
+
+**"Unable to resolve Sonos group for this zone"**
+- Cause: Zone has no devices configured (legacy zone with empty device_player_ids)
+- Cause: All devices are offline
+- Fix: Edit zone in admin UI to select devices, or delete and recreate zone
 
 **"Failed to enqueue track"**
 - Cause: Wrong serviceId (must be "9")
@@ -808,6 +890,8 @@ POST /groups/{groupId}/playback/content
 
 Earwicket is a functional Sonos control system with room for improvement. The core features work:
 - ✅ Multi-household support
+- ✅ **Device-based zone management** (resilient to Sonos regrouping)
+- ✅ **Automatic group resolution and creation**
 - ✅ Scheduled playlist playback
 - ✅ Visitor song requests
 - ✅ Real-time playback display

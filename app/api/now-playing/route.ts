@@ -63,12 +63,40 @@ export async function GET(request: NextRequest) {
     // Resolve zone to group ID
     let sonosGroupId: string;
     try {
+      console.log(`[NOW-PLAYING] Resolving zone "${zone.name}":`, {
+        zoneId: zone.id,
+        deviceCount: zone.device_player_ids.length,
+        cachedGroupId: zone.sonos_group_id,
+        householdId: zoneData.household_id,
+      });
+
       const resolution = await resolveZoneGroup(zone, zoneData.household_id);
       sonosGroupId = resolution.groupId;
-    } catch (error) {
-      console.error(`[NOW-PLAYING] Zone "${zone.name}": Failed to resolve group:`, error);
+
+      console.log(`[NOW-PLAYING] Zone "${zone.name}" resolved to group:`, {
+        groupId: resolution.groupId,
+        wasCreated: resolution.wasCreated,
+        isPartialGroup: resolution.isPartialGroup,
+      });
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[NOW-PLAYING] Zone "${zone.name}": Failed to resolve group:`, {
+        error: errorMessage,
+        deviceCount: zone.device_player_ids.length,
+        cachedGroupId: zone.sonos_group_id,
+      });
+
+      // Return more descriptive error
       return NextResponse.json(
-        { success: false, error: 'Unable to resolve Sonos group for this zone' },
+        {
+          success: false,
+          error: `Unable to resolve Sonos group: ${errorMessage}`,
+          details: {
+            zoneName: zone.name,
+            hasDevices: zone.device_player_ids.length > 0,
+            hasCachedGroup: !!zone.sonos_group_id,
+          }
+        },
         { status: 500 }
       );
     }
