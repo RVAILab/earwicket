@@ -75,16 +75,6 @@ export default function Home() {
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            console.log('=== NOW PLAYING DATA ===');
-            console.log('Zone:', data.data.zone);
-            console.log('Activity:', data.data.activity);
-            console.log('Schedule:', data.data.schedule);
-            console.log('Playback Status:', data.data.playbackStatus);
-            console.log('Metadata:', data.data.metadata);
-            console.log('Queue:', data.data.queue);
-            console.log('Full payload:', JSON.stringify(data.data, null, 2));
-            console.log('========================');
-
             setNowPlaying(data.data);
             setIsLoadingZoneChange(false);
           }

@@ -162,18 +162,30 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
 1. **Sonos playbackMetadata API** - Current track info
    - Returns: container, currentItem, nextItem
    - **Issue**: Often returns incomplete track data (missing name/artist)
+   - **Issue**: Returns local device URLs for album art (http://192.168.x.x:1400)
 
-2. **Spotify enrichment** (workaround for Sonos limitation)
-   - Extract track ID from `objectId: "spotify:track:{id}"`
-   - Fetch full track details from Spotify API
-   - Merge: name, artist, album into metadata
-   - **This is critical** - without it, "Unknown Track" displays
+2. **Spotify enrichment** (workaround for Sonos limitations)
+   - Detects Spotify tracks via `objectId: "spotify:track:{id}"`
+   - Uses `spotifyClient.getTrack()` with automatic token refresh
+   - Replaces track data: name, artist, album
+   - **Always** replaces album art with Spotify CDN HTTPS URL
+   - Strips any local/HTTP image URLs from response
+   - **This is critical** - without it, "Unknown Track" displays and images fail to load
 
 3. **Database queue** - Visitor requests (pending only)
    - Shows what will play after current track
    - Excludes currently playing request
 
-**UI Refresh**: Every 3 seconds (polling, not webhooks yet)
+**UI Features:**
+- **Zone persistence**: Last selected zone saved in localStorage, restored on reload
+- **Smooth transitions**: Old data stays visible during zone switches with loading overlay
+- **Request cancellation**: AbortController prevents race conditions when switching zones rapidly
+- **Cache prevention**: No-cache headers on API requests and responses
+- **UI Refresh**: Every 3 seconds (polling, not webhooks yet)
+
+**Token Management:**
+- Spotify tokens auto-refresh with 5-minute expiry buffer
+- No manual re-authentication needed after initial OAuth
 
 ## API Endpoints
 
@@ -322,9 +334,10 @@ All tables use `earwicket_` prefix to avoid conflicts in shared databases.
    - Currently polling every 3 seconds (inefficient)
 
 2. **Metadata Enrichment Overhead**
-   - Every Now Playing fetch calls Spotify API
+   - Every Now Playing fetch calls Spotify API (with auto token refresh)
    - Should cache enriched metadata
    - **TODO**: Cache track details by Spotify ID (15-30 min TTL)
+   - **IMPROVED**: Now uses `spotifyClient` with automatic token refresh
 
 3. **No Authentication on Admin Features**
    - Admin controls visible to all users
@@ -531,13 +544,18 @@ Cron (1 min) → Process queue → Pause current → Load track → Play
 ```
 UI poll (3s) → /api/now-playing → Fetch Sonos metadata
                                         ↓
-                                  Track info missing?
+                                  Spotify track detected?
                                         ↓
                                   Extract Spotify ID
                                         ↓
-                                  Fetch from Spotify API
+                              spotifyClient.getTrack()
+                              (auto token refresh)
                                         ↓
-                                  Merge data → Return to UI
+                           Replace track data + album art
+                                        ↓
+                           Strip local image URLs
+                                        ↓
+                                  Return to UI
 ```
 
 ## Debugging Guide
@@ -564,11 +582,13 @@ UI poll (3s) → /api/now-playing → Fetch Sonos metadata
 - Test manually: `curl POST /api/cron/process-queue`
 - Logs: Look for `[QUEUE]` messages
 
-**"Unknown Track" displaying**
-- Cause: Sonos metadata incomplete
-- Check: Spotify credentials valid?
-- Check: `/api/now-playing` logs for enrichment
-- Should see: `[NOW-PLAYING] Enriched metadata from Spotify for: {name}`
+**"Unknown Track" or broken album art**
+- Cause: Sonos metadata incomplete or returns local URLs
+- Check: Spotify credentials valid? Visit `/api/spotify/auth` to re-authenticate
+- Check: `/api/now-playing` server logs for enrichment messages
+- Should see: `[NOW-PLAYING] Fetching from Spotify API with auto-refresh...`
+- **Fixed**: Album art now always uses Spotify HTTPS URLs, local URLs stripped automatically
+- **Fixed**: Tokens auto-refresh every hour, no manual re-auth needed
 
 **Songs stopping randomly**
 - **Fixed**: Schedule checker now checks for visitor requests

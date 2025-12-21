@@ -98,6 +98,8 @@ Visit `http://localhost:3000`
 2. **Authorize Sonos**: Visit `http://localhost:3000/api/sonos/auth`
 
 3. **Authorize Spotify**: Visit `http://localhost:3000/api/spotify/auth`
+   - Tokens automatically refresh every hour
+   - No need to re-authenticate unless credentials are revoked
 
 ## Development
 
