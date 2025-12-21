@@ -28,6 +28,7 @@ export default function Home() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [selectedZone, setSelectedZone] = useState<string>('');
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
+  const [isLoadingZoneChange, setIsLoadingZoneChange] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); // TODO: Implement real auth check
 
   useEffect(() => {
@@ -45,8 +46,9 @@ export default function Home() {
   useEffect(() => {
     if (!selectedZone) return;
 
-    // Clear old data immediately when zone changes
-    setNowPlaying(null);
+    // Create AbortController for this zone to cancel stale requests
+    const abortController = new AbortController();
+    setIsLoadingZoneChange(true);
 
     // Fetch now playing info
     const fetchNowPlaying = () => {
@@ -55,20 +57,29 @@ export default function Home() {
         headers: {
           'Cache-Control': 'no-cache',
         },
+        signal: abortController.signal,
       })
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
             setNowPlaying(data.data);
+            setIsLoadingZoneChange(false);
           }
         })
-        .catch((err) => console.error('Error fetching now playing:', err));
+        .catch((err) => {
+          if (err.name === 'AbortError') return; // Ignore cancelled requests
+          console.error('Error fetching now playing:', err);
+          setIsLoadingZoneChange(false);
+        });
     };
 
     fetchNowPlaying();
     // Refresh every 3 seconds for more real-time updates
     const interval = setInterval(fetchNowPlaying, 3000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      abortController.abort();
+    };
   }, [selectedZone]);
 
   return (
@@ -106,8 +117,17 @@ export default function Home() {
 
         {/* Now Playing & Full Queue */}
         {nowPlaying && (
-          <div key={selectedZone} className="mb-12">
-            <div className="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-gray-100">
+          <div className="mb-12">
+            <div className="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-lg border border-gray-100 relative">
+              {/* Loading overlay during zone transitions */}
+              {isLoadingZoneChange && (
+                <div className="absolute inset-0 bg-white/50 backdrop-blur-sm rounded-2xl flex items-center justify-center z-10">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-2"></div>
+                    <p className="text-sm text-gray-600 font-semibold">Loading zone...</p>
+                  </div>
+                </div>
+              )}
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-3xl font-bold flex items-center gap-2">
                   <span>🎵</span>
@@ -181,9 +201,13 @@ export default function Home() {
                   <div className="flex gap-6 mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
                     {nowPlaying.metadata.currentItem.track?.imageUrl && (
                       <img
+                        key={nowPlaying.metadata.currentItem.track.imageUrl}
                         src={nowPlaying.metadata.currentItem.track.imageUrl}
                         alt="Album art"
                         className="w-32 h-32 object-cover rounded-lg shadow-lg"
+                        onError={(e) => {
+                          e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="128" height="128"%3E%3Crect fill="%23ddd" width="128" height="128"/%3E%3C/svg%3E';
+                        }}
                       />
                     )}
                     <div className="flex-1">
