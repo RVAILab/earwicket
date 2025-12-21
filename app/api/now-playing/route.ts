@@ -106,23 +106,23 @@ export async function GET(request: NextRequest) {
                 const spotifyTrack = await spotifyClient.getTrack(trackId);
 
                 console.log('[NOW-PLAYING] Spotify track data:', {
-                  name: spotifyTrack.body.name,
-                  albumImages: spotifyTrack.body.album?.images?.length,
-                  imageUrl: spotifyTrack.body.album?.images[0]?.url
+                  name: spotifyTrack.name,
+                  albumImages: spotifyTrack.album?.images?.length,
+                  imageUrl: spotifyTrack.album?.images[0]?.url
                 });
 
                 // Always use Spotify data for Spotify tracks
                 if (!metadata.currentItem.track.name) {
-                  metadata.currentItem.track.name = spotifyTrack.body.name;
+                  metadata.currentItem.track.name = spotifyTrack.name;
                 }
                 if (!metadata.currentItem.track.artist?.name) {
-                  metadata.currentItem.track.artist = { name: spotifyTrack.body.artists[0]?.name };
+                  metadata.currentItem.track.artist = { name: spotifyTrack.artists[0]?.name };
                 }
                 if (!metadata.currentItem.track.album?.name) {
-                  metadata.currentItem.track.album = { name: spotifyTrack.body.album.name };
+                  metadata.currentItem.track.album = { name: spotifyTrack.album.name };
                 }
                 // ALWAYS use Spotify's album artwork (HTTPS URL)
-                metadata.currentItem.track.imageUrl = spotifyTrack.body.album.images[0]?.url;
+                metadata.currentItem.track.imageUrl = spotifyTrack.album.images[0]?.url;
 
                 console.log('[NOW-PLAYING] Set imageUrl to:', metadata.currentItem.track.imageUrl);
               } catch (enrichError) {
