@@ -6,6 +6,7 @@ interface Zone {
   id: string;
   name: string;
   environment_name: string;
+  sonos_group_id?: string;
 }
 
 interface NowPlaying {
@@ -17,19 +18,13 @@ interface NowPlaying {
   queue: Array<{ id: string; track_name: string; artist_name: string; requested_by: string | null; status: string }>;
 }
 
-interface Zone {
-  id: string;
-  name: string;
-  environment_name: string;
-  sonos_group_id?: string;
-}
-
 export default function Home() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [selectedZone, setSelectedZone] = useState<string>('');
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [isLoadingZoneChange, setIsLoadingZoneChange] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); // TODO: Implement real auth check
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     // Fetch zones
@@ -98,8 +93,87 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 p-8">
       <div className="max-w-7xl mx-auto">
+        {/* Top-right Menu */}
+        <div className="fixed top-6 right-6 z-50">
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="bg-white/90 backdrop-blur-sm p-4 rounded-2xl shadow-lg border border-gray-200 hover:shadow-xl transition-all duration-300"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-6 h-6 text-gray-700"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d={isMenuOpen ? "M6 18L18 6M6 6l12 12" : "M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"}
+              />
+            </svg>
+          </button>
+
+          {/* Dropdown Menu */}
+          {isMenuOpen && (
+            <div className="absolute top-20 right-0 w-80 bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+              {/* Zone Selector */}
+              {zones.length > 0 && (
+                <div className="p-4 border-b border-gray-200">
+                  <label className="block text-sm font-bold mb-2 text-gray-700">🏠 Select Zone</label>
+                  <select
+                    value={selectedZone}
+                    onChange={(e) => setSelectedZone(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border-2 border-purple-200 rounded-xl font-semibold focus:border-purple-500 focus:outline-none"
+                  >
+                    {zones.map((zone) => (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.environment_name} - {zone.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Admin Section */}
+              <div className="p-4 border-b border-gray-200">
+                <h3 className="text-sm font-bold mb-3 text-gray-700">⚙️ Administration</h3>
+                <a
+                  href="/admin"
+                  className="block w-full px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-semibold transition-all duration-200 text-center"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Admin Dashboard
+                </a>
+              </div>
+
+              {/* Setup Section */}
+              <div className="p-4">
+                <h3 className="text-sm font-bold mb-3 text-gray-700">🔗 Setup & Authorization</h3>
+                <div className="space-y-2">
+                  <a
+                    href="/api/sonos/auth"
+                    className="block w-full px-4 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all font-semibold text-center"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    🔊 Connect Sonos
+                  </a>
+                  <a
+                    href="/api/spotify/auth"
+                    className="block w-full px-4 py-3 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-all font-semibold text-center"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    🎵 Connect Spotify
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Logo/Header */}
-        <div className="text-center mb-8 animate-fade-in">
+        <div className="text-center mb-12 animate-fade-in">
           <div className="inline-block mb-4">
             <div className="text-6xl mb-2">🐰🎵</div>
           </div>
@@ -110,23 +184,6 @@ export default function Home() {
             Your magical Sonos control companion
           </p>
         </div>
-
-        {/* Zone Selector */}
-        {zones.length > 0 && (
-          <div className="mb-8 max-w-md mx-auto">
-            <select
-              value={selectedZone}
-              onChange={(e) => setSelectedZone(e.target.value)}
-              className="w-full px-4 py-3 bg-white/90 backdrop-blur-sm border-2 border-purple-200 rounded-xl font-semibold text-center focus:border-purple-500 focus:outline-none shadow-lg"
-            >
-              {zones.map((zone) => (
-                <option key={zone.id} value={zone.id}>
-                  {zone.environment_name} - {zone.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
 
         {/* Now Playing & Full Queue */}
         {nowPlaying && (
@@ -326,53 +383,17 @@ export default function Home() {
           </div>
         )}
 
-        {/* Main Actions */}
-        <div className="grid md:grid-cols-2 gap-6 mb-12 max-w-3xl mx-auto">
-          <a
-            href="/admin"
-            className="group relative overflow-hidden bg-gradient-to-br from-blue-500 to-blue-600 text-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300"
-          >
-            <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity"></div>
-            <div className="text-4xl mb-3">⚙️</div>
-            <h2 className="text-2xl font-bold mb-2">Admin Dashboard</h2>
-            <p className="text-blue-100 text-sm">Manage schedules, zones & playlists</p>
-          </a>
-
+        {/* Request a Song - Prominent CTA */}
+        <div className="max-w-2xl mx-auto mb-12">
           <a
             href="/visitor"
-            className="group relative overflow-hidden bg-gradient-to-br from-green-500 to-emerald-600 text-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300"
+            className="group relative overflow-hidden bg-gradient-to-br from-green-500 to-emerald-600 text-white p-12 rounded-3xl shadow-2xl hover:shadow-3xl transform hover:-translate-y-2 transition-all duration-300 block text-center"
           >
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity"></div>
-            <div className="text-4xl mb-3">🎤</div>
-            <h2 className="text-2xl font-bold mb-2">Request a Song</h2>
-            <p className="text-green-100 text-sm">Add your favorite track to the queue</p>
+            <div className="text-7xl mb-4">🎤</div>
+            <h2 className="text-4xl font-black mb-3">Request a Song</h2>
+            <p className="text-green-100 text-lg font-medium">Search for your favorite track and add it to the queue</p>
           </a>
-        </div>
-
-        {/* Setup Section */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg border border-gray-100">
-          <h3 className="text-2xl font-bold mb-6 text-gray-800">
-            🔗 Setup & Authorization
-          </h3>
-          <div className="flex gap-4 justify-center flex-wrap mb-4">
-            <a
-              href="/api/sonos/auth"
-              className="group px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-all duration-300 font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center gap-2"
-            >
-              <span className="text-xl">🔊</span>
-              <span>Connect Sonos</span>
-            </a>
-            <a
-              href="/api/spotify/auth"
-              className="group px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-500 transition-all duration-300 font-semibold shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center gap-2"
-            >
-              <span className="text-xl">🎵</span>
-              <span>Connect Spotify</span>
-            </a>
-          </div>
-          <p className="text-sm text-gray-500">
-            First time here? Click these to connect your accounts
-          </p>
         </div>
 
         {/* Footer */}
