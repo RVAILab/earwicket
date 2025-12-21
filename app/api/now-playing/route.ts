@@ -87,8 +87,17 @@ export async function GET(request: NextRequest) {
           const data = await metadataResponse.json();
           metadata = data;
 
-          // Enrich with Spotify data if track info is missing but we have a track ID
-          if (!data.currentItem?.track?.name && data.currentItem?.track?.id?.objectId) {
+          // Check if we need Spotify enrichment:
+          // 1. Track info is missing
+          // 2. Album art is a local URL (not accessible from browser)
+          const needsEnrichment =
+            !data.currentItem?.track?.name ||
+            (data.currentItem?.track?.imageUrl &&
+             (data.currentItem.track.imageUrl.startsWith('http://') &&
+              data.currentItem.track.imageUrl.includes(':1400')));
+
+          // Enrich with Spotify data if needed and we have a track ID
+          if (needsEnrichment && data.currentItem?.track?.id?.objectId) {
             const trackUri = data.currentItem.track.id.objectId;
             const trackId = trackUri.split(':')[2];
 
@@ -116,6 +125,8 @@ export async function GET(request: NextRequest) {
                     metadata.currentItem.track.name = spotifyTrack.name;
                     metadata.currentItem.track.artist = { name: spotifyTrack.artists[0]?.name };
                     metadata.currentItem.track.album = { name: spotifyTrack.album.name };
+                    // Use Spotify's album artwork (prefer largest image)
+                    metadata.currentItem.track.imageUrl = spotifyTrack.album.images[0]?.url || metadata.currentItem.track.imageUrl;
 
                     console.log('[NOW-PLAYING] Enriched metadata from Spotify for:', spotifyTrack.name);
                   }
