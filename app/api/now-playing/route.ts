@@ -87,23 +87,15 @@ export async function GET(request: NextRequest) {
           const data = await metadataResponse.json();
           metadata = data;
 
-          // Check if we need Spotify enrichment:
-          // 1. Track info is missing
-          // 2. Album art is a local URL (not accessible from browser)
-          const needsEnrichment =
-            !data.currentItem?.track?.name ||
-            (data.currentItem?.track?.imageUrl &&
-             (data.currentItem.track.imageUrl.startsWith('http://') &&
-              data.currentItem.track.imageUrl.includes(':1400')));
+          // For Spotify tracks, ALWAYS fetch album art from Spotify API (never use local URLs)
+          const trackUri = data.currentItem?.track?.id?.objectId;
+          const isSpotifyTrack = trackUri?.startsWith('spotify:track:');
 
-          // Enrich with Spotify data if needed and we have a track ID
-          if (needsEnrichment && data.currentItem?.track?.id?.objectId) {
-            const trackUri = data.currentItem.track.id.objectId;
+          if (isSpotifyTrack) {
             const trackId = trackUri.split(':')[2];
 
             if (trackId) {
               try {
-                // Fetch from Spotify
                 const spotifyCreds = await db.queryOne<{ access_token: string }>(
                   `SELECT access_token FROM ${TABLES.SPOTIFY_CREDENTIALS} LIMIT 1`
                 );
@@ -121,21 +113,59 @@ export async function GET(request: NextRequest) {
                   if (spotifyResponse.ok) {
                     const spotifyTrack = await spotifyResponse.json();
 
-                    // Enrich the metadata with Spotify data
-                    metadata.currentItem.track.name = spotifyTrack.name;
-                    metadata.currentItem.track.artist = { name: spotifyTrack.artists[0]?.name };
-                    metadata.currentItem.track.album = { name: spotifyTrack.album.name };
-                    // Use Spotify's album artwork (prefer largest image)
-                    metadata.currentItem.track.imageUrl = spotifyTrack.album.images[0]?.url || metadata.currentItem.track.imageUrl;
+                    // Always use Spotify data for Spotify tracks
+                    if (!metadata.currentItem.track.name) {
+                      metadata.currentItem.track.name = spotifyTrack.name;
+                    }
+                    if (!metadata.currentItem.track.artist?.name) {
+                      metadata.currentItem.track.artist = { name: spotifyTrack.artists[0]?.name };
+                    }
+                    if (!metadata.currentItem.track.album?.name) {
+                      metadata.currentItem.track.album = { name: spotifyTrack.album.name };
+                    }
+                    // ALWAYS use Spotify's album artwork (HTTPS URL)
+                    metadata.currentItem.track.imageUrl = spotifyTrack.album.images[0]?.url;
 
-                    console.log('[NOW-PLAYING] Enriched metadata from Spotify for:', spotifyTrack.name);
+                    console.log('[NOW-PLAYING] Using Spotify album art for:', spotifyTrack.name);
+                  } else {
+                    console.error('[NOW-PLAYING] Spotify fetch failed:', spotifyResponse.status);
+                    // Remove local URL even if Spotify fetch fails
+                    if (metadata.currentItem?.track?.imageUrl?.includes(':1400')) {
+                      metadata.currentItem.track.imageUrl = null;
+                    }
                   }
                 }
               } catch (enrichError) {
-                console.error('[NOW-PLAYING] Failed to enrich from Spotify:', enrichError);
+                console.error('[NOW-PLAYING] Failed to fetch from Spotify:', enrichError);
+                // Remove local URL even if Spotify fetch fails
+                if (metadata.currentItem?.track?.imageUrl?.includes(':1400')) {
+                  metadata.currentItem.track.imageUrl = null;
+                }
               }
             }
           }
+
+          // Safety net: Strip out ANY local URLs (HTTP + port, or local IPs)
+          const stripLocalUrls = (obj: any) => {
+            if (!obj || typeof obj !== 'object') return;
+
+            for (const key in obj) {
+              if (typeof obj[key] === 'string' && key.toLowerCase().includes('url')) {
+                // Remove if it's a local URL (has port :1400 or starts with http://192, etc)
+                if (obj[key].includes(':1400') ||
+                    obj[key].startsWith('http://192.') ||
+                    obj[key].startsWith('http://10.') ||
+                    obj[key].startsWith('http://172.')) {
+                  console.log('[NOW-PLAYING] Stripped local URL:', obj[key].substring(0, 50));
+                  obj[key] = null;
+                }
+              } else if (typeof obj[key] === 'object') {
+                stripLocalUrls(obj[key]);
+              }
+            }
+          };
+
+          stripLocalUrls(metadata);
         } else {
           console.error('[NOW-PLAYING] Failed to fetch metadata:', metadataResponse.status);
         }
@@ -152,17 +182,26 @@ export async function GET(request: NextRequest) {
       [zoneId]
     );
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        zone: zone.name,
-        activity: state?.current_activity || 'idle',
-        schedule: currentSchedule,
-        playbackStatus,
-        metadata,
-        queue,
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          zone: zone.name,
+          activity: state?.current_activity || 'idle',
+          schedule: currentSchedule,
+          playbackStatus,
+          metadata,
+          queue,
+        },
       },
-    });
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    );
   } catch (error: any) {
     console.error('Error fetching now playing:', error);
     return NextResponse.json(
