@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db/client';
 import { TABLES } from '@/lib/db/tables';
 import { sonosClient } from '@/lib/sonos/client';
+import { resolveZoneGroup } from '@/lib/sonos/groupResolver';
 import { spotifyClient } from '@/lib/spotify/client';
+import { Zone } from '@/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,16 +18,58 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get zone info
-    const zone = await db.queryOne<{ sonos_group_id: string; name: string }>(
-      `SELECT sonos_group_id, name FROM ${TABLES.ZONES} WHERE id = $1`,
+    // Get zone info with environment data (needed for group resolution)
+    const zoneData = await db.queryOne<{
+      id: string;
+      name: string;
+      environment_id: string;
+      device_player_ids: any;
+      sonos_group_id: string | null;
+      group_id_cached_at: Date | null;
+      group_id_cache_ttl_minutes: number;
+      household_id: string;
+    }>(
+      `SELECT z.*, e.household_id
+       FROM ${TABLES.ZONES} z
+       JOIN ${TABLES.ENVIRONMENTS} e ON z.environment_id = e.id
+       WHERE z.id = $1`,
       [zoneId]
     );
 
-    if (!zone) {
+    if (!zoneData) {
       return NextResponse.json(
         { success: false, error: 'Zone not found' },
         { status: 404 }
+      );
+    }
+
+    // Parse device_player_ids if it's a string (JSONB from DB)
+    let devicePlayerIds = zoneData.device_player_ids;
+    if (typeof devicePlayerIds === 'string') {
+      devicePlayerIds = JSON.parse(devicePlayerIds);
+    }
+
+    const zone: Zone = {
+      id: zoneData.id,
+      name: zoneData.name,
+      environment_id: zoneData.environment_id,
+      device_player_ids: devicePlayerIds || [],
+      sonos_group_id: zoneData.sonos_group_id,
+      group_id_cached_at: zoneData.group_id_cached_at,
+      group_id_cache_ttl_minutes: zoneData.group_id_cache_ttl_minutes,
+      created_at: new Date(),
+    };
+
+    // Resolve zone to group ID
+    let sonosGroupId: string;
+    try {
+      const resolution = await resolveZoneGroup(zone, zoneData.household_id);
+      sonosGroupId = resolution.groupId;
+    } catch (error) {
+      console.error(`[NOW-PLAYING] Zone "${zone.name}": Failed to resolve group:`, error);
+      return NextResponse.json(
+        { success: false, error: 'Unable to resolve Sonos group for this zone' },
+        { status: 500 }
       );
     }
 
@@ -62,7 +106,7 @@ export async function GET(request: NextRequest) {
     // Get Sonos playback status
     let playbackStatus = null;
     try {
-      playbackStatus = await sonosClient.getPlaybackStatus(zone.sonos_group_id);
+      playbackStatus = await sonosClient.getPlaybackStatus(sonosGroupId);
     } catch (error) {
       console.error('Failed to get playback status:', error);
     }
@@ -76,7 +120,7 @@ export async function GET(request: NextRequest) {
 
       if (creds) {
         const metadataResponse = await fetch(
-          `https://api.ws.sonos.com/control/api/v1/groups/${zone.sonos_group_id}/playbackMetadata`,
+          `https://api.ws.sonos.com/control/api/v1/groups/${sonosGroupId}/playbackMetadata`,
           {
             headers: {
               Authorization: `Bearer ${creds.access_token}`,

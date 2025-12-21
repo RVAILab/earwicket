@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { evaluateAllSchedules } from '@/lib/scheduler';
 import { sonosClient } from '@/lib/sonos/client';
+import { resolveZoneGroup } from '@/lib/sonos/groupResolver';
 import db from '@/lib/db/client';
 import { TABLES } from '@/lib/db/tables';
 import { PlaybackState } from '@/types';
@@ -24,7 +25,21 @@ export async function POST(request: NextRequest) {
     console.log(`[CRON] Evaluated ${results.length} zones`);
 
     for (const result of results) {
-      const { zoneId, zoneName, sonosGroupId, schedule } = result;
+      const { zoneId, zoneName, zone, householdId, schedule } = result;
+
+      // Resolve zone to group ID
+      let sonosGroupId: string;
+      try {
+        const resolution = await resolveZoneGroup(zone, householdId);
+        sonosGroupId = resolution.groupId;
+
+        if (resolution.isPartialGroup) {
+          console.warn(`[CRON] Zone "${zoneName}": Using partial group (some devices offline)`);
+        }
+      } catch (error) {
+        console.error(`[CRON] Zone "${zoneName}": Failed to resolve group:`, error);
+        continue; // Skip this zone
+      }
 
       // Get current playback state
       const state = await db.queryOne<PlaybackState>(

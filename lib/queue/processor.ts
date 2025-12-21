@@ -1,62 +1,38 @@
 import db from '../db/client';
 import { TABLES } from '../db/tables';
 import { sonosClient } from '../sonos/client';
+import { resolveZoneGroup } from '../sonos/groupResolver';
 import { getActiveSchedule } from '../scheduler';
-import { PlaybackState, SongRequest, SonosPlaybackStatus } from '@/types';
+import { PlaybackState, SongRequest, SonosPlaybackStatus, Zone } from '@/types';
 
 /**
- * Refresh a zone's group ID by fetching current groups from Sonos
- * Returns the new group ID or null if no groups are available
+ * Refresh a zone's group ID is now handled by resolveZoneGroup
+ * This is a deprecated legacy function - kept for reference but should not be used
  */
-async function refreshZoneGroupId(zoneId: string): Promise<string | null> {
-  console.log(`[QUEUE] Zone ${zoneId}: Group ID is stale, refreshing...`);
-
-  try {
-    // Get the zone's household ID
-    const zone = await db.queryOne<{ household_id: string }>(
-      `SELECT e.household_id
-       FROM ${TABLES.ZONES} z
-       JOIN ${TABLES.ENVIRONMENTS} e ON z.environment_id = e.id
-       WHERE z.id = $1`,
-      [zoneId]
-    );
-
-    if (!zone?.household_id) {
-      console.error(`[QUEUE] Zone ${zoneId}: Could not find household_id`);
-      return null;
-    }
-
-    // Fetch current groups for this household
-    const groups = await sonosClient.getGroups();
-
-    if (groups.length === 0) {
-      console.error(`[QUEUE] Zone ${zoneId}: No groups available in Sonos`);
-      return null;
-    }
-
-    // Pick the first available group (arbitrary choice as requested)
-    const newGroupId = groups[0].id;
-
-    // Update the zone's group ID
-    await db.execute(
-      `UPDATE ${TABLES.ZONES} SET sonos_group_id = $1 WHERE id = $2`,
-      [newGroupId, zoneId]
-    );
-
-    console.log(`[QUEUE] Zone ${zoneId}: Updated group ID to ${newGroupId}`);
-    return newGroupId;
-  } catch (error: any) {
-    console.error(`[QUEUE] Zone ${zoneId}: Failed to refresh group ID:`, error.message);
-    return null;
-  }
-}
 
 /**
  * Process the visitor song queue for a specific zone
  * Called by cron job every minute
  */
-export async function processZoneQueue(zoneId: string, sonosGroupId: string): Promise<void> {
-  console.log(`[QUEUE] Processing zone ${zoneId} (group: ${sonosGroupId})`);
+export async function processZoneQueue(zone: Zone, householdId: string): Promise<void> {
+  const zoneId = zone.id;
+  const zoneName = zone.name;
+
+  console.log(`[QUEUE] Processing zone ${zoneName} (${zoneId})`);
+
+  // Resolve zone to group ID
+  let sonosGroupId: string;
+  try {
+    const resolution = await resolveZoneGroup(zone, householdId);
+    sonosGroupId = resolution.groupId;
+
+    if (resolution.isPartialGroup) {
+      console.warn(`[QUEUE] Zone "${zoneName}": Using partial group (some devices offline)`);
+    }
+  } catch (error) {
+    console.error(`[QUEUE] Zone "${zoneName}": Failed to resolve group:`, error);
+    return; // Skip this zone
+  }
 
   // Get current playback state
   const state = await db.queryOne<PlaybackState>(
@@ -105,37 +81,12 @@ export async function processZoneQueue(zoneId: string, sonosGroupId: string): Pr
     });
   } catch (error: any) {
     console.error(`[QUEUE] Zone ${zoneId}: Failed to get playback status:`, error.message);
-
-    // If it's a 410 error, try to refresh the group ID
-    if (error.message.includes('410')) {
-      const newGroupId = await refreshZoneGroupId(zoneId);
-      if (newGroupId) {
-        currentGroupId = newGroupId;
-        // Try again with new group ID
-        try {
-          playbackStatus = await sonosClient.getPlaybackStatus(currentGroupId);
-          isPlaying = playbackStatus.playbackState === 'PLAYBACK_STATE_PLAYING';
-          console.log(`[QUEUE] Zone ${zoneId}: Retry succeeded with new group ID`);
-        } catch (retryError: any) {
-          console.error(`[QUEUE] Zone ${zoneId}: Retry failed:`, retryError.message);
-          playbackStatus = {
-            playbackState: 'PLAYBACK_STATE_IDLE',
-            queueVersion: '',
-          };
-        }
-      } else {
-        playbackStatus = {
-          playbackState: 'PLAYBACK_STATE_IDLE',
-          queueVersion: '',
-        };
-      }
-    } else {
-      // If we can't get status, assume not playing and continue
-      playbackStatus = {
-        playbackState: 'PLAYBACK_STATE_IDLE',
-        queueVersion: '',
-      };
-    }
+    // Note: Group resolution happens at the start, so 410 errors should be rare
+    // If we can't get status, assume idle and continue
+    playbackStatus = {
+      playbackState: 'PLAYBACK_STATE_IDLE',
+      queueVersion: '',
+    };
   }
 
   // Case 1: We have a pending request and no song is currently playing
@@ -267,33 +218,13 @@ async function checkAndStartSchedule(
 
   console.log(`[QUEUE] Zone ${zoneId}: Starting schedule "${activeSchedule.name}"`);
 
-  let currentGroupId = sonosGroupId;
-
   try {
     // Load and play the scheduled playlist
-    await sonosClient.loadPlaylist(currentGroupId, activeSchedule.playlist_uri, true);
+    // Note: Group resolution happens at the start, so 410 errors should be rare
+    await sonosClient.loadPlaylist(sonosGroupId, activeSchedule.playlist_uri, true);
   } catch (error: any) {
     console.error(`[QUEUE] Zone ${zoneId}: Failed to load playlist:`, error.message);
-
-    // If it's a 410 error, try to refresh the group ID and retry
-    if (error.message.includes('410') || error.message.includes('ERROR_RESOURCE_GONE')) {
-      const newGroupId = await refreshZoneGroupId(zoneId);
-      if (newGroupId) {
-        currentGroupId = newGroupId;
-        console.log(`[QUEUE] Zone ${zoneId}: Retrying with new group ID...`);
-        try {
-          await sonosClient.loadPlaylist(currentGroupId, activeSchedule.playlist_uri, true);
-          console.log(`[QUEUE] Zone ${zoneId}: Retry succeeded`);
-        } catch (retryError: any) {
-          console.error(`[QUEUE] Zone ${zoneId}: Retry failed:`, retryError.message);
-          return; // Give up
-        }
-      } else {
-        return; // Can't refresh, give up
-      }
-    } else {
-      return; // Other error, give up
-    }
+    return; // Give up on error - group was already resolved
   }
 
   // Update playback state

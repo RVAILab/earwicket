@@ -72,22 +72,32 @@ export async function getActiveSchedule(
 
 /**
  * Evaluate all zones and return which schedules should be active
+ * Note: Returns zones with environment data for group resolution, not resolved group IDs
  */
 export async function evaluateAllSchedules(): Promise<
   Array<{
     zoneId: string;
     zoneName: string;
-    sonosGroupId: string;
+    zone: any; // Full zone object with device_player_ids
+    householdId: string; // Needed for group resolution
     schedule: ScheduleWithTimezone | null;
   }>
 > {
-  // Get all zones
+  // Get all zones with environment data (needed for group resolution)
   const zones = await db.query<{
     id: string;
     name: string;
-    sonos_group_id: string;
+    environment_id: string;
+    device_player_ids: any;
+    sonos_group_id: string | null;
+    group_id_cached_at: Date | null;
+    group_id_cache_ttl_minutes: number;
+    household_id: string;
   }>(
-    `SELECT id, name, sonos_group_id FROM ${TABLES.ZONES} ORDER BY name ASC`
+    `SELECT z.*, e.household_id
+     FROM ${TABLES.ZONES} z
+     JOIN ${TABLES.ENVIRONMENTS} e ON z.environment_id = e.id
+     ORDER BY z.name ASC`
   );
 
   const results = [];
@@ -95,10 +105,26 @@ export async function evaluateAllSchedules(): Promise<
   for (const zone of zones) {
     const schedule = await getActiveSchedule(zone.id);
 
+    // Parse device_player_ids if it's a string (JSONB from DB)
+    let devicePlayerIds = zone.device_player_ids;
+    if (typeof devicePlayerIds === 'string') {
+      devicePlayerIds = JSON.parse(devicePlayerIds);
+    }
+
     results.push({
       zoneId: zone.id,
       zoneName: zone.name,
-      sonosGroupId: zone.sonos_group_id,
+      zone: {
+        id: zone.id,
+        name: zone.name,
+        environment_id: zone.environment_id,
+        device_player_ids: devicePlayerIds || [],
+        sonos_group_id: zone.sonos_group_id,
+        group_id_cached_at: zone.group_id_cached_at,
+        group_id_cache_ttl_minutes: zone.group_id_cache_ttl_minutes,
+        created_at: new Date(),
+      },
+      householdId: zone.household_id,
       schedule,
     });
   }

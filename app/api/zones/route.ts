@@ -46,34 +46,76 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { environment_id, name, sonos_group_id } = body;
+    const { environment_id, name, device_player_ids, sonos_group_id } = body;
 
-    if (!environment_id || !name || !sonos_group_id) {
+    // Support both new (device_player_ids) and legacy (sonos_group_id) approaches
+    if (!environment_id || !name) {
       return NextResponse.json(
-        { success: false, error: 'environment_id, name, and sonos_group_id required' },
+        { success: false, error: 'environment_id and name required' },
         { status: 400 }
       );
     }
 
-    const zone = await db.queryOne<Zone>(
-      `INSERT INTO ${TABLES.ZONES} (environment_id, name, sonos_group_id)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [environment_id, name, sonos_group_id]
-    );
+    // Validate device_player_ids if provided
+    if (device_player_ids && (!Array.isArray(device_player_ids) || device_player_ids.length === 0)) {
+      return NextResponse.json(
+        { success: false, error: 'device_player_ids must be a non-empty array' },
+        { status: 400 }
+      );
+    }
 
-    // Create initial playback_state for this zone
-    await db.execute(
-      `INSERT INTO ${TABLES.PLAYBACK_STATE} (zone_id, current_activity)
-       VALUES ($1, 'idle')
-       ON CONFLICT (zone_id) DO NOTHING`,
-      [zone!.id]
-    );
+    // New approach: device-based zones
+    if (device_player_ids) {
+      const zone = await db.queryOne<Zone>(
+        `INSERT INTO ${TABLES.ZONES}
+         (environment_id, name, device_player_ids, sonos_group_id, group_id_cache_ttl_minutes)
+         VALUES ($1, $2, $3::jsonb, NULL, 30)
+         RETURNING *`,
+        [environment_id, name, JSON.stringify(device_player_ids)]
+      );
 
-    return NextResponse.json({
-      success: true,
-      data: zone,
-    });
+      // Create initial playback_state for this zone
+      await db.execute(
+        `INSERT INTO ${TABLES.PLAYBACK_STATE} (zone_id, current_activity)
+         VALUES ($1, 'idle')
+         ON CONFLICT (zone_id) DO NOTHING`,
+        [zone!.id]
+      );
+
+      return NextResponse.json({
+        success: true,
+        data: zone,
+      });
+    }
+
+    // Legacy approach: group-based zones (backward compatibility)
+    if (sonos_group_id) {
+      const zone = await db.queryOne<Zone>(
+        `INSERT INTO ${TABLES.ZONES}
+         (environment_id, name, sonos_group_id, device_player_ids, group_id_cache_ttl_minutes)
+         VALUES ($1, $2, $3, '[]'::jsonb, 30)
+         RETURNING *`,
+        [environment_id, name, sonos_group_id]
+      );
+
+      // Create initial playback_state for this zone
+      await db.execute(
+        `INSERT INTO ${TABLES.PLAYBACK_STATE} (zone_id, current_activity)
+         VALUES ($1, 'idle')
+         ON CONFLICT (zone_id) DO NOTHING`,
+        [zone!.id]
+      );
+
+      return NextResponse.json({
+        success: true,
+        data: zone,
+      });
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Either device_player_ids or sonos_group_id required' },
+      { status: 400 }
+    );
   } catch (error: any) {
     console.error('Error creating zone:', error);
     return NextResponse.json(

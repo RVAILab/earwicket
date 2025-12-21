@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { SonosGroup } from '@/types';
+import { SonosPlayer } from '@/types';
 
 interface Environment {
   id: string;
@@ -13,7 +13,8 @@ interface Environment {
 interface Zone {
   id: string;
   name: string;
-  sonos_group_id: string;
+  device_player_ids: string[];
+  sonos_group_id: string | null;
   environment_name?: string;
 }
 
@@ -26,12 +27,12 @@ export default function ZonesPage() {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [households, setHouseholds] = useState<Household[]>([]);
-  const [sonosGroups, setSonosGroups] = useState<SonosGroup[]>([]);
+  const [sonosPlayers, setSonosPlayers] = useState<SonosPlayer[]>([]);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [selectedHouseholdForZone, setSelectedHouseholdForZone] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [showEnvForm, setShowEnvForm] = useState(false);
   const [showZoneForm, setShowZoneForm] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -59,45 +60,28 @@ export default function ZonesPage() {
     }
   };
 
-  // Fetch groups for selected household when creating zone
-  const fetchGroupsForHousehold = async (householdId: string) => {
+  // Fetch players/devices for selected household when creating zone
+  const fetchPlayersForHousehold = async (householdId: string) => {
     setSelectedHouseholdForZone(householdId);
+    setSelectedPlayerIds([]);
     try {
-      const response = await fetch(`/api/sonos/groups/${householdId}`);
+      const response = await fetch(`/api/sonos/players/${householdId}`);
       const data = await response.json();
       if (data.success) {
-        setSonosGroups(data.data);
+        setSonosPlayers(data.data.players);
       }
     } catch (error) {
-      console.error('Error fetching groups:', error);
+      console.error('Error fetching players:', error);
     }
   };
 
-  // Refresh Sonos group IDs from API
-  const refreshSonosGroups = async () => {
-    if (!confirm('Refresh all zone group IDs from Sonos? This will update stale group IDs.')) {
-      return;
-    }
-
-    setRefreshing(true);
-    try {
-      const response = await fetch('/api/admin/refresh-sonos-groups', {
-        method: 'POST',
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        alert(`Successfully refreshed!\n\nUpdated: ${data.data.updated.length} zones\nNot found: ${data.data.notFound.length} zones`);
-        fetchData();
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (error) {
-      console.error('Error refreshing groups:', error);
-      alert('Failed to refresh groups');
-    } finally {
-      setRefreshing(false);
-    }
+  // Toggle player selection
+  const togglePlayerSelection = (playerId: string) => {
+    setSelectedPlayerIds(prev =>
+      prev.includes(playerId)
+        ? prev.filter(id => id !== playerId)
+        : [...prev, playerId]
+    );
   };
 
   const createEnvironment = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -128,6 +112,11 @@ export default function ZonesPage() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
 
+    if (selectedPlayerIds.length === 0) {
+      alert('Please select at least one device for this zone');
+      return;
+    }
+
     try {
       const response = await fetch('/api/zones', {
         method: 'POST',
@@ -135,18 +124,23 @@ export default function ZonesPage() {
         body: JSON.stringify({
           environment_id: formData.get('environment_id'),
           name: formData.get('name'),
-          sonos_group_id: formData.get('sonos_group_id'),
+          device_player_ids: selectedPlayerIds,
         }),
       });
 
+      const data = await response.json();
       if (response.ok) {
         setShowZoneForm(false);
-        setSonosGroups([]);
+        setSonosPlayers([]);
+        setSelectedPlayerIds([]);
         setSelectedHouseholdForZone('');
         fetchData();
+      } else {
+        alert(`Error creating zone: ${data.error}`);
       }
     } catch (error) {
       console.error('Error creating zone:', error);
+      alert('Failed to create zone');
     }
   };
 
@@ -304,22 +298,13 @@ export default function ZonesPage() {
         {/* Zones Section */}
         <div>
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold">📍 Zones</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={refreshSonosGroups}
-                disabled={refreshing}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {refreshing ? '🔄 Refreshing...' : '🔄 Refresh Groups'}
-              </button>
-              <button
-                onClick={() => setShowZoneForm(!showZoneForm)}
-                className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-500 transition font-semibold"
-              >
-                + New Zone
-              </button>
-            </div>
+            <h2 className="text-2xl font-bold">📍 Zones (Device-Based)</h2>
+            <button
+              onClick={() => setShowZoneForm(!showZoneForm)}
+              className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-500 transition font-semibold"
+            >
+              + New Zone
+            </button>
           </div>
 
           {showZoneForm && (
@@ -334,7 +319,7 @@ export default function ZonesPage() {
                     onChange={(e) => {
                       const env = environments.find((env) => env.id === e.target.value);
                       if (env?.household_id) {
-                        fetchGroupsForHousehold(env.household_id);
+                        fetchPlayersForHousehold(env.household_id);
                       }
                     }}
                   >
@@ -346,7 +331,7 @@ export default function ZonesPage() {
                     ))}
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    Select an environment to see its Sonos groups
+                    Select an environment to see its Sonos devices
                   </p>
                 </div>
                 <div>
@@ -359,32 +344,64 @@ export default function ZonesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">Sonos Group</label>
-                  <select
-                    name="sonos_group_id"
-                    required
-                    className="w-full px-4 py-2 border rounded-lg"
-                    disabled={!selectedHouseholdForZone}
-                  >
-                    <option value="">
-                      {selectedHouseholdForZone ? 'Select Sonos group...' : 'Select environment first...'}
-                    </option>
-                    {sonosGroups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-sm font-semibold mb-2">
+                    Sonos Devices (Select 1 or more)
+                  </label>
+                  {!selectedHouseholdForZone && (
+                    <p className="text-sm text-gray-500 py-4 px-4 bg-gray-50 rounded-lg">
+                      Select an environment first to see available devices
+                    </p>
+                  )}
+                  {selectedHouseholdForZone && sonosPlayers.length === 0 && (
+                    <p className="text-sm text-gray-500 py-4 px-4 bg-gray-50 rounded-lg">
+                      Loading devices...
+                    </p>
+                  )}
+                  {selectedHouseholdForZone && sonosPlayers.length > 0 && (
+                    <div className="border rounded-lg p-3 max-h-64 overflow-y-auto space-y-2">
+                      {sonosPlayers.map((player) => (
+                        <label
+                          key={player.id}
+                          className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPlayerIds.includes(player.id)}
+                            onChange={() => togglePlayerSelection(player.id)}
+                            className="w-5 h-5 text-green-600 rounded"
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium">{player.name}</div>
+                            <div className="text-xs text-gray-400">{player.id}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-2">
+                    {selectedPlayerIds.length > 0 ? (
+                      <span className="text-green-600 font-medium">
+                        ✓ {selectedPlayerIds.length} device{selectedPlayerIds.length !== 1 ? 's' : ''} selected
+                      </span>
+                    ) : (
+                      'Select the devices that should play together in this zone'
+                    )}
+                  </p>
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={selectedPlayerIds.length === 0}
+                  >
                     Create Zone
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setShowZoneForm(false);
-                      setSonosGroups([]);
+                      setSonosPlayers([]);
+                      setSelectedPlayerIds([]);
                       setSelectedHouseholdForZone('');
                     }}
                     className="px-4 py-2 bg-gray-200 rounded-lg"
@@ -399,14 +416,27 @@ export default function ZonesPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {zones.map((zone) => (
               <div key={zone.id} className="bg-white p-4 rounded-xl shadow flex justify-between items-start">
-                <div>
+                <div className="flex-1">
                   <h3 className="font-bold text-lg">{zone.name}</h3>
                   <p className="text-sm text-gray-600">{zone.environment_name}</p>
-                  <p className="text-xs text-gray-400 mt-2">Group: {zone.sonos_group_id.substring(0, 20)}...</p>
+                  <div className="mt-2">
+                    <p className="text-xs font-semibold text-gray-500 mb-1">
+                      {zone.device_player_ids?.length || 0} Device{(zone.device_player_ids?.length || 0) !== 1 ? 's' : ''}:
+                    </p>
+                    {zone.device_player_ids && zone.device_player_ids.length > 0 ? (
+                      <div className="text-xs text-gray-400 space-y-0.5">
+                        {zone.device_player_ids.map((id, idx) => (
+                          <div key={idx} className="truncate">• {id.substring(0, 30)}...</div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-orange-500">⚠️ Legacy zone - needs migration</p>
+                    )}
+                  </div>
                 </div>
                 <button
                   onClick={() => deleteZone(zone.id)}
-                  className="text-red-600 hover:text-red-800 text-sm"
+                  className="text-red-600 hover:text-red-800 text-sm ml-2"
                   title="Delete zone"
                 >
                   🗑️
@@ -415,7 +445,7 @@ export default function ZonesPage() {
             ))}
             {zones.length === 0 && (
               <div className="col-span-3 text-center py-8 text-gray-500">
-                <p>No zones yet. Create zones from your Sonos groups!</p>
+                <p>No zones yet. Create zones by selecting Sonos devices!</p>
               </div>
             )}
           </div>

@@ -11,7 +11,10 @@ export interface Zone {
   id: string;
   environment_id: string;
   name: string;
-  sonos_group_id: string;
+  device_player_ids: string[]; // Persistent list of player IDs that define this zone
+  sonos_group_id: string | null; // Cached Sonos group ID, may be stale
+  group_id_cached_at: Date | null; // When the group ID was last resolved
+  group_id_cache_ttl_minutes: number; // Cache validity period (default: 30)
   created_at: Date;
 }
 
@@ -102,6 +105,17 @@ export interface SonosGroup {
   name: string;
   coordinatorId: string;
   playerIds: string[];
+}
+
+export interface SonosPlayer {
+  id: string;
+  name: string;
+  websocketUrl?: string;
+  softwareVersion?: string;
+  apiVersion?: string;
+  minApiVersion?: string;
+  capabilities?: string[];
+  deviceIds?: string[];
 }
 
 export interface SonosPlaybackStatus {

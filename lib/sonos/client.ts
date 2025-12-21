@@ -1,6 +1,6 @@
 import db from '../db/client';
 import { TABLES } from '../db/tables';
-import { SonosCredentials, SonosGroup, SonosPlaybackStatus } from '@/types';
+import { SonosCredentials, SonosGroup, SonosPlayer, SonosPlaybackStatus } from '@/types';
 
 const SONOS_API_BASE = 'https://api.ws.sonos.com/control/api/v1';
 const SONOS_AUTH_BASE = 'https://api.sonos.com';
@@ -346,6 +346,104 @@ export class SonosClient {
     if (!response.ok) {
       throw new Error('Failed to pause');
     }
+  }
+
+  /**
+   * Get all players/devices in a household by extracting unique players from all groups
+   * Note: Sonos API doesn't have a direct /players endpoint, so we derive it from groups
+   */
+  async getPlayers(householdId?: string): Promise<SonosPlayer[]> {
+    await this.ensureAuthenticated();
+
+    const targetHouseholdId = householdId || this.householdId;
+    if (!targetHouseholdId) {
+      throw new Error('No household ID available');
+    }
+
+    // Fetch all groups to extract player information
+    const response = await fetch(
+      `${SONOS_API_BASE}/households/${targetHouseholdId}/groups`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch groups for players: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const groups = data.groups || [];
+
+    // Extract unique players from all groups
+    const playerMap = new Map<string, SonosPlayer>();
+
+    groups.forEach((group: SonosGroup) => {
+      group.playerIds.forEach((playerId: string) => {
+        if (!playerMap.has(playerId)) {
+          // Create a basic player object
+          // We can enhance this with more details if needed
+          playerMap.set(playerId, {
+            id: playerId,
+            name: playerId, // Default to ID, can be enhanced with metadata
+          });
+        }
+      });
+    });
+
+    return Array.from(playerMap.values());
+  }
+
+  /**
+   * Create a new Sonos group from a list of player IDs
+   * If players are in different groups, they will be automatically moved to the new group
+   */
+  async createGroup(householdId: string, playerIds: string[]): Promise<SonosGroup> {
+    await this.ensureAuthenticated();
+
+    if (!playerIds || playerIds.length === 0) {
+      throw new Error('At least one player ID is required to create a group');
+    }
+
+    const response = await fetch(
+      `${SONOS_API_BASE}/households/${householdId}/groups/createGroup`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          playerIds: playerIds,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[SONOS] Failed to create group:`, {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+        playerIds,
+      });
+      throw new Error(`Failed to create group: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    // The response should contain the group info
+    // Structure may vary, but typically includes: { group: { id, coordinatorId, playerIds, ... } }
+    const group = data.group || data;
+
+    console.log('[SONOS] Successfully created group:', {
+      groupId: group.id,
+      playerIds: group.playerIds,
+    });
+
+    return group;
   }
 }
 
