@@ -38,10 +38,23 @@ export default function Home() {
       .then((data) => {
         if (data.success && data.data.length > 0) {
           setZones(data.data);
-          setSelectedZone(data.data[0].id);
+
+          // Try to restore last viewed zone from localStorage
+          const savedZoneId = localStorage.getItem('selectedZone');
+          const savedZoneExists = savedZoneId && data.data.some((z: Zone) => z.id === savedZoneId);
+
+          // Use saved zone if it exists, otherwise use first zone
+          setSelectedZone(savedZoneExists ? savedZoneId : data.data[0].id);
         }
       });
   }, []);
+
+  // Save selected zone to localStorage whenever it changes
+  useEffect(() => {
+    if (selectedZone) {
+      localStorage.setItem('selectedZone', selectedZone);
+    }
+  }, [selectedZone]);
 
   useEffect(() => {
     if (!selectedZone) return;
@@ -62,6 +75,16 @@ export default function Home() {
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
+            console.log('=== NOW PLAYING DATA ===');
+            console.log('Zone:', data.data.zone);
+            console.log('Activity:', data.data.activity);
+            console.log('Schedule:', data.data.schedule);
+            console.log('Playback Status:', data.data.playbackStatus);
+            console.log('Metadata:', data.data.metadata);
+            console.log('Queue:', data.data.queue);
+            console.log('Full payload:', JSON.stringify(data.data, null, 2));
+            console.log('========================');
+
             setNowPlaying(data.data);
             setIsLoadingZoneChange(false);
           }
