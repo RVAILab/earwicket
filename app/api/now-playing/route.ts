@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db/client';
 import { TABLES } from '@/lib/db/tables';
 import { sonosClient } from '@/lib/sonos/client';
+import { spotifyClient } from '@/lib/spotify/client';
 
 export async function GET(request: NextRequest) {
   try {
@@ -91,50 +92,39 @@ export async function GET(request: NextRequest) {
           const trackUri = data.currentItem?.track?.id?.objectId;
           const isSpotifyTrack = trackUri?.startsWith('spotify:track:');
 
+          console.log('[NOW-PLAYING] Track URI:', trackUri);
+          console.log('[NOW-PLAYING] Is Spotify track:', isSpotifyTrack);
+
           if (isSpotifyTrack) {
             const trackId = trackUri.split(':')[2];
+            console.log('[NOW-PLAYING] Track ID:', trackId);
 
             if (trackId) {
               try {
-                const spotifyCreds = await db.queryOne<{ access_token: string }>(
-                  `SELECT access_token FROM ${TABLES.SPOTIFY_CREDENTIALS} LIMIT 1`
-                );
+                // Use spotifyClient which handles token refresh automatically
+                console.log('[NOW-PLAYING] Fetching from Spotify API with auto-refresh...');
+                const spotifyTrack = await spotifyClient.getTrack(trackId);
 
-                if (spotifyCreds) {
-                  const spotifyResponse = await fetch(
-                    `https://api.spotify.com/v1/tracks/${trackId}`,
-                    {
-                      headers: {
-                        Authorization: `Bearer ${spotifyCreds.access_token}`,
-                      },
-                    }
-                  );
+                console.log('[NOW-PLAYING] Spotify track data:', {
+                  name: spotifyTrack.body.name,
+                  albumImages: spotifyTrack.body.album?.images?.length,
+                  imageUrl: spotifyTrack.body.album?.images[0]?.url
+                });
 
-                  if (spotifyResponse.ok) {
-                    const spotifyTrack = await spotifyResponse.json();
-
-                    // Always use Spotify data for Spotify tracks
-                    if (!metadata.currentItem.track.name) {
-                      metadata.currentItem.track.name = spotifyTrack.name;
-                    }
-                    if (!metadata.currentItem.track.artist?.name) {
-                      metadata.currentItem.track.artist = { name: spotifyTrack.artists[0]?.name };
-                    }
-                    if (!metadata.currentItem.track.album?.name) {
-                      metadata.currentItem.track.album = { name: spotifyTrack.album.name };
-                    }
-                    // ALWAYS use Spotify's album artwork (HTTPS URL)
-                    metadata.currentItem.track.imageUrl = spotifyTrack.album.images[0]?.url;
-
-                    console.log('[NOW-PLAYING] Using Spotify album art for:', spotifyTrack.name);
-                  } else {
-                    console.error('[NOW-PLAYING] Spotify fetch failed:', spotifyResponse.status);
-                    // Remove local URL even if Spotify fetch fails
-                    if (metadata.currentItem?.track?.imageUrl?.includes(':1400')) {
-                      metadata.currentItem.track.imageUrl = null;
-                    }
-                  }
+                // Always use Spotify data for Spotify tracks
+                if (!metadata.currentItem.track.name) {
+                  metadata.currentItem.track.name = spotifyTrack.body.name;
                 }
+                if (!metadata.currentItem.track.artist?.name) {
+                  metadata.currentItem.track.artist = { name: spotifyTrack.body.artists[0]?.name };
+                }
+                if (!metadata.currentItem.track.album?.name) {
+                  metadata.currentItem.track.album = { name: spotifyTrack.body.album.name };
+                }
+                // ALWAYS use Spotify's album artwork (HTTPS URL)
+                metadata.currentItem.track.imageUrl = spotifyTrack.body.album.images[0]?.url;
+
+                console.log('[NOW-PLAYING] Set imageUrl to:', metadata.currentItem.track.imageUrl);
               } catch (enrichError) {
                 console.error('[NOW-PLAYING] Failed to fetch from Spotify:', enrichError);
                 // Remove local URL even if Spotify fetch fails
@@ -142,6 +132,8 @@ export async function GET(request: NextRequest) {
                   metadata.currentItem.track.imageUrl = null;
                 }
               }
+            } else {
+              console.error('[NOW-PLAYING] Could not extract track ID from URI:', trackUri);
             }
           }
 
