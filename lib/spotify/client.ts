@@ -51,10 +51,11 @@ export class SpotifyClient {
     await db.execute(`DELETE FROM ${TABLES.SPOTIFY_CREDENTIALS}`);
 
     // Insert new credentials
+    // Convert Date to ISO string to ensure consistent serialization across database drivers
     await db.execute(
       `INSERT INTO ${TABLES.SPOTIFY_CREDENTIALS} (access_token, refresh_token, expires_at, user_id)
        VALUES ($1, $2, $3, $4)`,
-      [accessToken, refreshToken, expiresAt, userId]
+      [accessToken, refreshToken, expiresAt.toISOString(), userId]
     );
   }
 
@@ -97,11 +98,12 @@ export class SpotifyClient {
     }
 
     // Update database
+    // Convert Date to ISO string to ensure consistent serialization across database drivers
     const refreshToken = data.body.refresh_token || this.spotify.getRefreshToken();
     await db.execute(
       `UPDATE ${TABLES.SPOTIFY_CREDENTIALS}
        SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = CURRENT_TIMESTAMP`,
-      [data.body.access_token, refreshToken, this.expiresAt]
+      [data.body.access_token, refreshToken, this.expiresAt?.toISOString()]
     );
   }
 

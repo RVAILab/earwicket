@@ -16,6 +16,15 @@ export async function GET() {
 
     const now = new Date();
 
+    // Debug logging
+    if (sonosCreds) {
+      console.log('[STATUS] Sonos expires_at raw:', sonosCreds.expires_at);
+      console.log('[STATUS] Sonos expires_at type:', typeof sonosCreds.expires_at);
+      console.log('[STATUS] Sonos expires_at parsed:', new Date(sonosCreds.expires_at));
+      console.log('[STATUS] Now:', now);
+      console.log('[STATUS] Is expired?:', new Date(sonosCreds.expires_at) < now);
+    }
+
     return NextResponse.json({
       success: true,
       data: {

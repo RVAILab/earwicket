@@ -99,10 +99,11 @@ export class SonosClient {
     await db.execute(`DELETE FROM ${TABLES.SONOS_CREDENTIALS}`);
 
     // Insert new credentials
+    // Convert Date to ISO string to ensure consistent serialization across database drivers
     await db.execute(
       `INSERT INTO ${TABLES.SONOS_CREDENTIALS} (access_token, refresh_token, expires_at, household_id)
        VALUES ($1, $2, $3, $4)`,
-      [this.accessToken, this.refreshToken, this.expiresAt, this.householdId]
+      [this.accessToken, this.refreshToken, this.expiresAt?.toISOString(), this.householdId]
     );
   }
 
@@ -162,10 +163,11 @@ export class SonosClient {
     this.expiresAt = new Date(Date.now() + data.expires_in * 1000);
 
     // Update database
+    // Convert Date to ISO string to ensure consistent serialization across database drivers
     await db.execute(
       `UPDATE ${TABLES.SONOS_CREDENTIALS}
        SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = CURRENT_TIMESTAMP`,
-      [this.accessToken, this.refreshToken, this.expiresAt]
+      [this.accessToken, this.refreshToken, this.expiresAt?.toISOString()]
     );
   }
 
