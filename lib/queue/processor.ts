@@ -89,6 +89,14 @@ export async function processZoneQueue(zone: Zone, householdId: string): Promise
     };
   }
 
+  // IMPORTANT: If Sonos is currently playing and there are no pending visitor requests,
+  // leave it alone. We should never stop music that's already playing unless we have
+  // a specific visitor request to play.
+  if (isPlaying && pendingRequests.length === 0 && !playingRequest) {
+    console.log(`[QUEUE] Zone ${zoneId}: Music is playing and no visitor requests - leaving playback alone`);
+    return;
+  }
+
   // Case 1: We have a pending request and no song is currently playing
   if (pendingRequests.length > 0 && !playingRequest) {
     const nextRequest = pendingRequests[0];
@@ -188,8 +196,9 @@ export async function processZoneQueue(zone: Zone, householdId: string): Promise
   }
 
   // Case 3: No visitor requests and idle - check if a schedule should be playing
-  if (!playingRequest && pendingRequests.length === 0 && state?.current_activity !== 'scheduled') {
-    console.log(`[QUEUE] Zone ${zoneId}: Idle, checking for active schedule`);
+  // Only start a schedule if nothing is currently playing on Sonos
+  if (!playingRequest && pendingRequests.length === 0 && state?.current_activity !== 'scheduled' && !isPlaying) {
+    console.log(`[QUEUE] Zone ${zoneId}: Idle and not playing, checking for active schedule`);
     await checkAndStartSchedule(zoneId, currentGroupId, state);
   }
 }

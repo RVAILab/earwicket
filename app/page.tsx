@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { SpotifyTrack } from '@/types';
 
 interface Zone {
   id: string;
@@ -25,6 +26,14 @@ export default function Home() {
   const [isLoadingZoneChange, setIsLoadingZoneChange] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); // TODO: Implement real auth check
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // Song Request Modal State
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SpotifyTrack[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [requestedBy, setRequestedBy] = useState('');
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     // Fetch zones
@@ -89,6 +98,69 @@ export default function Home() {
       abortController.abort();
     };
   }, [selectedZone]);
+
+  // Song Request Modal Handlers
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    setSearching(true);
+    try {
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setSearchResults(data.data);
+      } else {
+        setMessage({ type: 'error', text: data.error });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Search failed' });
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const requestSong = async (track: SpotifyTrack) => {
+    if (!selectedZone) {
+      setMessage({ type: 'error', text: 'Please select a zone from the menu' });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          zone_id: selectedZone,
+          track_uri: track.uri,
+          track_name: track.name,
+          artist_name: track.artists.map((a) => a.name).join(', '),
+          requested_by: requestedBy || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setMessage({
+          type: 'success',
+          text: `"${track.name}" added to queue!`,
+        });
+        // Close modal immediately after successful request
+        setTimeout(() => {
+          setIsRequestModalOpen(false);
+          setSearchResults([]);
+          setSearchQuery('');
+          setMessage(null);
+        }, 1500);
+      } else {
+        setMessage({ type: 'error', text: data.error });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to add song' });
+    }
+  };
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 p-8">
@@ -385,15 +457,15 @@ export default function Home() {
 
         {/* Request a Song - Prominent CTA */}
         <div className="max-w-2xl mx-auto mb-12">
-          <a
-            href="/visitor"
-            className="group relative overflow-hidden bg-gradient-to-br from-green-500 to-emerald-600 text-white p-12 rounded-3xl shadow-2xl hover:shadow-3xl transform hover:-translate-y-2 transition-all duration-300 block text-center"
+          <button
+            onClick={() => setIsRequestModalOpen(true)}
+            className="group relative overflow-hidden bg-gradient-to-br from-green-500 to-emerald-600 text-white p-12 rounded-3xl shadow-2xl hover:shadow-3xl transform hover:-translate-y-2 transition-all duration-300 block text-center w-full"
           >
             <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity"></div>
             <div className="text-7xl mb-4">🎤</div>
             <h2 className="text-4xl font-black mb-3">Request a Song</h2>
             <p className="text-green-100 text-lg font-medium">Search for your favorite track and add it to the queue</p>
-          </a>
+          </button>
         </div>
 
         {/* Footer */}
@@ -401,6 +473,131 @@ export default function Home() {
           <p>Named after the March Hare&apos;s full name: Earwicket</p>
         </div>
       </div>
+
+      {/* Song Request Modal */}
+      {isRequestModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-pink-50 via-purple-50 to-blue-50 p-6 border-b border-gray-200 flex justify-between items-center">
+              <div>
+                <h2 className="text-3xl font-black bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
+                  🎤 Request a Song
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Playing to: <span className="font-bold">{zones.find(z => z.id === selectedZone)?.name || 'Select a zone'}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsRequestModalOpen(false);
+                  setSearchResults([]);
+                  setSearchQuery('');
+                  setMessage(null);
+                }}
+                className="text-gray-500 hover:text-gray-700 transition"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-8 h-8"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              {/* Message Alert */}
+              {message && (
+                <div
+                  className={`mb-6 p-4 rounded-xl font-semibold ${
+                    message.type === 'success'
+                      ? 'bg-green-100 text-green-800 border-2 border-green-300'
+                      : 'bg-red-100 text-red-800 border-2 border-red-300'
+                  }`}
+                >
+                  {message.text}
+                </div>
+              )}
+
+              {/* Your Name (Optional) */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold mb-2 text-gray-700">👤 Your Name (Optional)</label>
+                <input
+                  type="text"
+                  value={requestedBy}
+                  onChange={(e) => setRequestedBy(e.target.value)}
+                  placeholder="Let us know who requested this!"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Search */}
+              <form onSubmit={handleSearch} className="mb-6">
+                <label className="block text-sm font-bold mb-2 text-gray-700">🔍 Search for a Song</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Song name, artist, or album..."
+                    className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={searching || !searchQuery.trim()}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 disabled:cursor-not-allowed font-bold transition-all duration-300 shadow-lg hover:shadow-xl"
+                  >
+                    {searching ? 'Searching...' : 'Search'}
+                  </button>
+                </div>
+              </form>
+
+              {/* Search Results */}
+              {searchResults.length > 0 && (
+                <div className="space-y-3">
+                  {searchResults.map((track) => (
+                    <div
+                      key={track.id}
+                      className="flex items-center justify-between p-4 bg-gradient-to-r from-white to-purple-50 rounded-xl border-2 border-purple-100 hover:border-purple-300 transition-all group"
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        {track.album.images[0] && (
+                          <img
+                            src={track.album.images[0].url}
+                            alt={track.album.name}
+                            className="w-16 h-16 rounded-lg shadow-md"
+                          />
+                        )}
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg group-hover:text-purple-600 transition">
+                            {track.name}
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            {track.artists.map((a) => a.name).join(', ')}
+                          </p>
+                          <p className="text-xs text-gray-400">{track.album.name}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => requestSong(track)}
+                        className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-500 hover:to-emerald-500 font-bold transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
