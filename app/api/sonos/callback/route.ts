@@ -24,10 +24,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/admin?sonos_auth=success`
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error exchanging Sonos code:', error);
+    const errorMessage = encodeURIComponent(error?.message || 'Unknown error');
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/admin?error=sonos_token_exchange_failed`
+      `${process.env.NEXT_PUBLIC_APP_URL}/admin?error=sonos_token_exchange_failed&details=${errorMessage}`
     );
   }
 }
