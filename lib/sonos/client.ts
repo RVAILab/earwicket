@@ -69,17 +69,26 @@ export class SonosClient {
   }
 
   private async fetchHouseholdId(): Promise<void> {
+    console.log('[SONOS] Fetching households...');
+
     const response = await fetch(`${SONOS_API_BASE}/households`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
       },
     });
 
+    const responseText = await response.text();
+    console.log('[SONOS] Households response:', {
+      status: response.status,
+      ok: response.ok,
+      body: responseText,
+    });
+
     if (!response.ok) {
-      throw new Error('Failed to fetch households');
+      throw new Error(`Failed to fetch households: ${response.status} - ${responseText}`);
     }
 
-    const data = await response.json();
+    const data = JSON.parse(responseText);
     if (data.households && data.households.length > 0) {
       // Store the first household by default
       // User can change this via /api/sonos/households if they have multiple
@@ -90,7 +99,7 @@ export class SonosClient {
         console.warn('[SONOS] Multiple households detected! You can switch via /api/sonos/households');
       }
     } else {
-      throw new Error('No households found');
+      throw new Error(`No households found. API response: ${responseText}`);
     }
   }
 
