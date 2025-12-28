@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS earwicket_sonos_credentials (
     access_token TEXT NOT NULL,
     refresh_token TEXT NOT NULL,
     expires_at TIMESTAMP NOT NULL,
-    household_id VARCHAR(255) NOT NULL,
+    household_id VARCHAR(255),  -- Nullable, can be set later via /api/sonos/households
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
