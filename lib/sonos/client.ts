@@ -61,8 +61,15 @@ export class SonosClient {
     this.refreshToken = data.refresh_token;
     this.expiresAt = new Date(Date.now() + data.expires_in * 1000);
 
-    // Fetch household ID
-    await this.fetchHouseholdId();
+    // Try to fetch household ID, but don't fail if none found
+    // (user can configure it later via /api/sonos/households)
+    try {
+      await this.fetchHouseholdId();
+    } catch (error: any) {
+      console.warn('[SONOS] Could not fetch household during auth:', error.message);
+      console.warn('[SONOS] Credentials will be saved without household ID - configure via /api/sonos/households');
+      this.householdId = null;
+    }
 
     // Store in database
     await this.saveCredentials();
