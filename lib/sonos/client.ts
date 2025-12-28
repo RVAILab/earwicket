@@ -371,6 +371,75 @@ export class SonosClient {
     }
   }
 
+  async getGroupVolume(groupId: string): Promise<{ volume: number; muted: boolean }> {
+    await this.ensureAuthenticated();
+
+    const response = await fetch(
+      `${SONOS_API_BASE}/groups/${groupId}/groupVolume`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[SONOS] Failed to fetch volume for group ${groupId}: ${response.status}`, errorText);
+      throw new Error(`Failed to fetch volume: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.json();
+  }
+
+  async setVolume(groupId: string, volume: number): Promise<void> {
+    await this.ensureAuthenticated();
+
+    if (volume < 0 || volume > 100) {
+      throw new Error('Volume must be between 0 and 100');
+    }
+
+    const response = await fetch(
+      `${SONOS_API_BASE}/groups/${groupId}/groupVolume`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ volume }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[SONOS] Failed to set volume for group ${groupId}:`, errorText);
+      throw new Error(`Failed to set volume: ${response.status} ${response.statusText}`);
+    }
+  }
+
+  async setMute(groupId: string, muted: boolean): Promise<void> {
+    await this.ensureAuthenticated();
+
+    const response = await fetch(
+      `${SONOS_API_BASE}/groups/${groupId}/groupVolume`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ muted }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[SONOS] Failed to set mute for group ${groupId}:`, errorText);
+      throw new Error(`Failed to set mute: ${response.status} ${response.statusText}`);
+    }
+  }
+
   /**
    * Get all players/devices in a household by extracting unique players from all groups
    * Note: Sonos API doesn't have a direct /players endpoint, so we derive it from groups

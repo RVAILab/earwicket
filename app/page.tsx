@@ -35,6 +35,11 @@ export default function Home() {
   const [requestedBy, setRequestedBy] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Volume Control State
+  const [currentVolume, setCurrentVolume] = useState<number>(5); // UI scale 0-10
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isVolumeLoading, setIsVolumeLoading] = useState(false);
+
   useEffect(() => {
     // Fetch zones
     fetch('/api/zones/public')
@@ -99,6 +104,27 @@ export default function Home() {
     };
   }, [selectedZone]);
 
+  // Fetch volume when zone changes
+  useEffect(() => {
+    if (!selectedZone) return;
+
+    const fetchVolume = async () => {
+      try {
+        const response = await fetch(`/api/playback/volume?zone_id=${selectedZone}`);
+        const data = await response.json();
+
+        if (data.success) {
+          setCurrentVolume(data.data.volumeUI);
+          setIsMuted(data.data.muted);
+        }
+      } catch (error) {
+        console.error('Failed to fetch volume:', error);
+      }
+    };
+
+    fetchVolume();
+  }, [selectedZone]);
+
   // Song Request Modal Handlers
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,6 +185,75 @@ export default function Home() {
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to add song' });
+    }
+  };
+
+  // Volume control handlers
+  const handleVolumeChange = async (volumeUI: number) => {
+    const zone = zones.find(z => z.id === selectedZone);
+    if (!zone) return;
+
+    // Optimistic update
+    setCurrentVolume(volumeUI);
+    setIsVolumeLoading(true);
+
+    try {
+      const response = await fetch('/api/playback/volume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          zone_id: selectedZone,
+          volumeUI: volumeUI
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        // Revert on error
+        console.error('Volume change failed:', data.error);
+        // Re-fetch current volume
+        const currentResponse = await fetch(`/api/playback/volume?zone_id=${selectedZone}`);
+        const currentData = await currentResponse.json();
+        if (currentData.success) {
+          setCurrentVolume(currentData.data.volumeUI);
+        }
+      }
+    } catch (error) {
+      console.error('Volume change error:', error);
+    } finally {
+      setIsVolumeLoading(false);
+    }
+  };
+
+  const handleMuteToggle = async () => {
+    const zone = zones.find(z => z.id === selectedZone);
+    if (!zone) return;
+
+    // Optimistic update
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+
+    try {
+      const response = await fetch('/api/playback/volume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          zone_id: selectedZone,
+          muted: newMutedState
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        // Revert on error
+        console.error('Mute toggle failed:', data.error);
+        setIsMuted(!newMutedState);
+      }
+    } catch (error) {
+      console.error('Mute toggle error:', error);
+      setIsMuted(!newMutedState);
     }
   };
 
@@ -334,6 +429,50 @@ export default function Home() {
                       ▶️ Play
                     </button>
                   )}
+
+                  {/* Volume Control - Elevator Style */}
+                  <div className="flex items-center gap-6 ml-6 pl-6 border-l-2 border-gray-200">
+                    {/* Mute Button */}
+                    <button
+                      onClick={handleMuteToggle}
+                      className={`p-3 rounded-xl font-bold transition-all duration-300 shadow-lg hover:shadow-xl ${
+                        isMuted
+                          ? 'bg-red-600 text-white hover:bg-red-500'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                      title={isMuted ? 'Unmute' : 'Mute'}
+                    >
+                      {isMuted ? '🔇' : '🔊'}
+                    </button>
+
+                    {/* Elevator-Style Volume Buttons */}
+                    <div className="flex flex-col gap-1.5">
+                      <div className="text-xs font-bold text-gray-500 mb-1 text-center">
+                        Volume: {isMuted ? 'Muted' : currentVolume}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((level) => (
+                          <button
+                            key={level}
+                            onClick={() => handleVolumeChange(level)}
+                            disabled={isVolumeLoading}
+                            className={`
+                              w-12 h-10 rounded-lg font-bold text-sm
+                              transition-all duration-200 shadow-md hover:shadow-lg
+                              disabled:opacity-50 disabled:cursor-not-allowed
+                              ${
+                                currentVolume === level
+                                  ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white scale-105 shadow-xl'
+                                  : 'bg-white text-gray-700 hover:bg-gradient-to-br hover:from-purple-100 hover:to-pink-100 hover:scale-105'
+                              }
+                            `}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
