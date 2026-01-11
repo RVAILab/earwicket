@@ -37,7 +37,6 @@ export default function Home() {
 
   // Volume Control State
   const [currentVolume, setCurrentVolume] = useState<number>(5); // UI scale 0-10
-  const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isVolumeLoading, setIsVolumeLoading] = useState(false);
 
   useEffect(() => {
@@ -115,7 +114,6 @@ export default function Home() {
 
         if (data.success) {
           setCurrentVolume(data.data.volumeUI);
-          setIsMuted(data.data.muted);
         }
       } catch (error) {
         console.error('Failed to fetch volume:', error);
@@ -223,37 +221,6 @@ export default function Home() {
       console.error('Volume change error:', error);
     } finally {
       setIsVolumeLoading(false);
-    }
-  };
-
-  const handleMuteToggle = async () => {
-    const zone = zones.find(z => z.id === selectedZone);
-    if (!zone) return;
-
-    // Optimistic update
-    const newMutedState = !isMuted;
-    setIsMuted(newMutedState);
-
-    try {
-      const response = await fetch('/api/playback/volume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          zone_id: selectedZone,
-          muted: newMutedState
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        // Revert on error
-        console.error('Mute toggle failed:', data.error);
-        setIsMuted(!newMutedState);
-      }
-    } catch (error) {
-      console.error('Mute toggle error:', error);
-      setIsMuted(!newMutedState);
     }
   };
 
@@ -432,23 +399,10 @@ export default function Home() {
 
                   {/* Volume Control - Elevator Style */}
                   <div className="flex items-center gap-6 ml-6 pl-6 border-l-2 border-gray-200">
-                    {/* Mute Button */}
-                    <button
-                      onClick={handleMuteToggle}
-                      className={`p-3 rounded-xl font-bold transition-all duration-300 shadow-lg hover:shadow-xl ${
-                        isMuted
-                          ? 'bg-red-600 text-white hover:bg-red-500'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                      title={isMuted ? 'Unmute' : 'Mute'}
-                    >
-                      {isMuted ? '🔇' : '🔊'}
-                    </button>
-
                     {/* Elevator-Style Volume Buttons */}
                     <div className="flex flex-col gap-1.5">
                       <div className="text-xs font-bold text-gray-500 mb-1 text-center">
-                        Volume: {isMuted ? 'Muted' : currentVolume}
+                        Volume: {currentVolume}
                       </div>
                       <div className="grid grid-cols-4 gap-1.5">
                         {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((level) => (
